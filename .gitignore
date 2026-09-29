@@ -1,0 +1,33 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+
+# Python / conda / tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.conda/
+
+# Frontend / build output
+node_modules/
+dist/
+build/
+.vite/
+
+# Local databases, logs and generated reports
+*.sqlite3
+*.db
+logs/
+coverage/
+
+# Design and browser companion artifacts
+.playwright-mcp/
+.superpowers/
