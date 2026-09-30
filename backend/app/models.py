@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 from pydantic import EmailStr
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -52,6 +52,7 @@ class UpdatePassword(SQLModel):
 class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
+    email_verified: bool = Field(default=False, nullable=False, index=True)
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
@@ -62,6 +63,7 @@ class User(UserBase, table=True):
 # Properties to return via API, id is always required
 class UserPublic(UserBase):
     id: uuid.UUID
+    email_verified: bool = False
     created_at: datetime | None = None
 
 
@@ -131,3 +133,67 @@ class TokenPayload(SQLModel):
 class NewPassword(SQLModel):
     token: str
     new_password: str = Field(min_length=8, max_length=128)
+
+
+class OAuthIdentity(SQLModel, table=True):
+    __tablename__ = "oauth_identity"
+    __table_args__ = (
+        UniqueConstraint(
+            "provider",
+            "provider_subject",
+            name="uq_oauth_identity_provider_subject",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    provider: str = Field(default="github", max_length=32, nullable=False)
+    provider_subject: str = Field(max_length=255, nullable=False, index=True)
+    email: EmailStr = Field(max_length=255, nullable=False)
+    email_verified: bool = Field(default=False, nullable=False)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class EmailVerificationToken(SQLModel, table=True):
+    __tablename__ = "email_verification_token"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    token_hash: str = Field(max_length=64, nullable=False, unique=True, index=True)
+    expires_at: datetime = Field(
+        sa_type=DateTime(timezone=True), nullable=False
+    )  # type: ignore
+    consumed_at: datetime | None = Field(
+        default=None, sa_type=DateTime(timezone=True)
+    )  # type: ignore
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class PasswordResetToken(SQLModel, table=True):
+    __tablename__ = "password_reset_token"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    token_hash: str = Field(max_length=64, nullable=False, unique=True, index=True)
+    expires_at: datetime = Field(
+        sa_type=DateTime(timezone=True), nullable=False
+    )  # type: ignore
+    consumed_at: datetime | None = Field(
+        default=None, sa_type=DateTime(timezone=True)
+    )  # type: ignore
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )

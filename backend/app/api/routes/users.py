@@ -1,7 +1,8 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import RedirectResponse
 from sqlmodel import col, delete, func, select
 
 from app import crud
@@ -24,6 +25,9 @@ from app.models import (
     UserUpdate,
     UserUpdateMe,
 )
+from app.schemas.identity import GitHubLinkRequest
+from app.services.github_oauth import GitHubOAuthService, OAuthConfigurationError
+from app.services.identity import EmailVerificationService
 from app.utils import generate_new_account_email, send_email
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -92,12 +96,48 @@ def update_user_me(
             raise HTTPException(
                 status_code=409, detail="User with this email already exists"
             )
+    email_changed = bool(
+        user_in.email and str(user_in.email).casefold() != str(current_user.email).casefold()
+    )
     user_data = user_in.model_dump(exclude_unset=True)
+    if email_changed:
+        user_data["email_verified"] = False
     current_user.sqlmodel_update(user_data)
     session.add(current_user)
     session.commit()
     session.refresh(current_user)
+    if email_changed:
+        EmailVerificationService(session=session).request(current_user.id)
     return current_user
+
+
+@router.post("/me/email-verification", response_model=Message, status_code=202)
+def request_my_email_verification(
+    *, session: SessionDep, current_user: CurrentUser
+) -> Message:
+    if not current_user.email_verified:
+        EmailVerificationService(session=session).request(current_user.id)
+    return Message(message="If that email is registered, we sent a verification link")
+
+
+@router.post("/me/github/link", response_class=RedirectResponse)
+def start_github_link(
+    request: Request,
+    body: GitHubLinkRequest,
+    session: SessionDep,
+    current_user: CurrentUser,
+) -> RedirectResponse:
+    verified, _ = verify_password(body.current_password, current_user.hashed_password)
+    if not verified:
+        raise HTTPException(status_code=400, detail="Incorrect password")
+    try:
+        return GitHubOAuthService(session=session).start(
+            request,
+            intent="link",
+            user_id=current_user.id,
+        )
+    except OAuthConfigurationError as exc:
+        raise HTTPException(status_code=503, detail="GitHub login is unavailable") from exc
 
 
 @router.patch("/me/password", response_model=Message)
@@ -156,6 +196,7 @@ def register_user(session: SessionDep, user_in: UserRegister) -> Any:
         )
     user_create = UserCreate.model_validate(user_in)
     user = crud.create_user(session=session, user_create=user_create)
+    EmailVerificationService(session=session).request(user.id)
     return user
 
 

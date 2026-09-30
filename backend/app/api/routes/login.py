@@ -1,19 +1,32 @@
 from datetime import timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app import crud
 from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
 from app.core import security
 from app.core.config import settings
-from app.models import Message, NewPassword, Token, UserPublic, UserUpdate
+from app.models import Message, NewPassword, Token, User, UserPublic
+from app.schemas.identity import EmailAddressRequest
+from app.services.github_oauth import (
+    GitHubOAuthService,
+    InvalidOAuthState,
+    OAuthConfigurationError,
+    OAuthError,
+)
+from app.services.identity import (
+    EmailVerificationService,
+    IdentityConflict,
+    InvalidVerificationToken,
+    PasswordResetService,
+    UnverifiedOAuthEmail,
+)
 from app.utils import (
     generate_password_reset_token,
     generate_reset_password_email,
-    send_email,
     verify_password_reset_token,
 )
 
@@ -50,28 +63,83 @@ def test_token(current_user: CurrentUser) -> Any:
     return current_user
 
 
+def _request_password_reset(*, session: Any, email: str) -> Message:
+    user = crud.get_user_by_email(session=session, email=email)
+    if user is not None and user.is_active:
+        PasswordResetService(session=session).request(user.id)
+    return Message(
+        message="If that email is registered, we sent a password recovery link"
+    )
+
+
+@router.post(
+    "/auth/request-password-reset",
+    response_model=Message,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def request_password_reset(
+    *, session: SessionDep, body: EmailAddressRequest
+) -> Message:
+    """Request a reset link without disclosing whether the email exists."""
+    return _request_password_reset(session=session, email=str(body.email))
+
+
+@router.post(
+    "/auth/request-email-verification",
+    response_model=Message,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def request_email_verification(
+    *, session: SessionDep, body: EmailAddressRequest
+) -> Message:
+    user = crud.get_user_by_email(session=session, email=str(body.email))
+    if user is not None and user.is_active and not user.email_verified:
+        EmailVerificationService(session=session).request(user.id)
+    return Message(message="If that email is registered, we sent a verification link")
+
+
+@router.get("/auth/verify-email", response_model=Message)
+def verify_email(
+    *, session: SessionDep, token: str = Query(min_length=1, max_length=512)
+) -> Message:
+    try:
+        EmailVerificationService(session=session).verify(token)
+    except InvalidVerificationToken as exc:
+        raise HTTPException(
+            status_code=400, detail="Invalid or expired verification token"
+        ) from exc
+    return Message(message="Email verified successfully")
+
+
+@router.get("/auth/github", response_class=RedirectResponse)
+def github_login(request: Request, session: SessionDep) -> RedirectResponse:
+    try:
+        return GitHubOAuthService(session=session).start(request)
+    except OAuthConfigurationError as exc:
+        raise HTTPException(status_code=503, detail="GitHub login is unavailable") from exc
+
+
+@router.get("/auth/github/callback", response_class=RedirectResponse)
+def github_callback(request: Request, session: SessionDep) -> RedirectResponse:
+    try:
+        return GitHubOAuthService(session=session).callback(request)
+    except InvalidOAuthState as exc:
+        raise HTTPException(status_code=400, detail="Invalid OAuth state") from exc
+    except (IdentityConflict, UnverifiedOAuthEmail) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="GitHub identity requires an existing verified account binding",
+        ) from exc
+    except OAuthError as exc:
+        raise HTTPException(status_code=502, detail="GitHub login failed") from exc
+
+
 @router.post("/password-recovery/{email}")
 def recover_password(email: str, session: SessionDep) -> Message:
     """
     Password Recovery
     """
-    user = crud.get_user_by_email(session=session, email=email)
-
-    # Always return the same response to prevent email enumeration attacks
-    # Only send email if user actually exists
-    if user:
-        password_reset_token = generate_password_reset_token(email=email)
-        email_data = generate_reset_password_email(
-            email_to=user.email, email=email, token=password_reset_token
-        )
-        send_email(
-            email_to=user.email,
-            subject=email_data.subject,
-            html_content=email_data.html_content,
-        )
-    return Message(
-        message="If that email is registered, we sent a password recovery link"
-    )
+    return _request_password_reset(session=session, email=email)
 
 
 @router.post("/reset-password/")
@@ -79,21 +147,27 @@ def reset_password(session: SessionDep, body: NewPassword) -> Message:
     """
     Reset password
     """
-    email = verify_password_reset_token(token=body.token)
-    if not email:
+    reset_service = PasswordResetService(session=session)
+    try:
+        user_id = reset_service.consume_token(body.token)
+    except InvalidVerificationToken:
+        # Existing template links are signed JWTs. Consume them once while
+        # migrating to hashed database-backed reset records.
+        email = verify_password_reset_token(token=body.token)
+        if not email:
+            raise HTTPException(status_code=400, detail="Invalid token") from None
+        try:
+            user_id = reset_service.consume_legacy_token(body.token, email)
+        except InvalidVerificationToken:
+            raise HTTPException(status_code=400, detail="Invalid token") from None
+    user = session.get(User, user_id)
+    if user is None:
         raise HTTPException(status_code=400, detail="Invalid token")
-    user = crud.get_user_by_email(session=session, email=email)
-    if not user:
-        # Don't reveal that the user doesn't exist - use same error as invalid token
-        raise HTTPException(status_code=400, detail="Invalid token")
-    elif not user.is_active:
+    if not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
-    user_in_update = UserUpdate(password=body.new_password)
-    crud.update_user(
-        session=session,
-        db_user=user,
-        user_in=user_in_update,
-    )
+    user.hashed_password = security.get_password_hash(body.new_password)
+    session.add(user)
+    session.commit()
     return Message(message="Password updated successfully")
 
 

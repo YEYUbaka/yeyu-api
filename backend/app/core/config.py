@@ -20,6 +20,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
     API_V1_STR: str = "/api/v1"
+    API_PUBLIC_URL: str = "http://localhost:8000"
     SECRET_KEY: str
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
@@ -55,11 +56,33 @@ class Settings(BaseSettings):
         return self
 
     EMAIL_RESET_TOKEN_EXPIRE_HOURS: int = 48
+    EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES: int = 30
+
+    # OAuth/Redis settings are optional for the local template baseline. The
+    # OAuth routes fail closed until all GitHub values are provided at runtime.
+    REDIS_URL: str = "redis://localhost:6379/0"
+    GITHUB_CLIENT_ID: str | None = None
+    GITHUB_CLIENT_SECRET: str | None = None
+    GITHUB_OAUTH_CALLBACK_URL: str | None = None
+    GITHUB_OAUTH_AUTHORIZE_URL: str = "https://github.com/login/oauth/authorize"
+    GITHUB_OAUTH_TOKEN_URL: str = "https://github.com/login/oauth/access_token"
+    GITHUB_API_BASE_URL: str = "https://api.github.com"
+    GITHUB_OAUTH_TIMEOUT_SECONDS: float = 10.0
+    AUTH_COOKIE_NAME: str = "yeyu_session"
 
     @computed_field  # type: ignore[prop-decorator]
     @property
     def emails_enabled(self) -> bool:
         return bool(self.SMTP_HOST and self.EMAILS_FROM_EMAIL)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def github_oauth_enabled(self) -> bool:
+        return bool(
+            self.GITHUB_CLIENT_ID
+            and self.GITHUB_CLIENT_SECRET
+            and self.GITHUB_OAUTH_CALLBACK_URL
+        )
 
     EMAIL_TEST_USER: EmailStr = "test@example.com"
     FIRST_SUPERUSER: EmailStr

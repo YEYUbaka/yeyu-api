@@ -1,3 +1,6 @@
+import hashlib
+import hmac
+import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -34,3 +37,16 @@ def verify_password(
 
 def get_password_hash(password: str) -> str:
     return password_hash.hash(password)
+
+
+def generate_opaque_token() -> str:
+    """Return a high-entropy token whose plaintext is only sent once."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_opaque_token(raw_token: str, *, purpose: str) -> str:
+    """Hash an opaque token with the application secret before persistence."""
+    message = f"{purpose}:{raw_token}".encode()
+    return hmac.new(
+        settings.SECRET_KEY.encode("utf-8"), message, hashlib.sha256
+    ).hexdigest()

@@ -53,8 +53,8 @@ def send_email(
         smtp_options["user"] = settings.SMTP_USER
     if settings.SMTP_PASSWORD:
         smtp_options["password"] = settings.SMTP_PASSWORD
-    response = message.send(to=email_to, smtp=smtp_options)
-    logger.info(f"send email result: {response}")
+    message.send(to=email_to, smtp=smtp_options)
+    logger.info("email delivery attempted")
 
 
 def generate_test_email(email_to: str) -> EmailData:
@@ -79,6 +79,25 @@ def generate_reset_password_email(email_to: str, email: str, token: str) -> Emai
             "email": email_to,
             "valid_hours": settings.EMAIL_RESET_TOKEN_EXPIRE_HOURS,
             "link": link,
+        },
+    )
+    return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_email_verification_email(
+    email_to: str, email: str, token: str
+) -> EmailData:
+    project_name = settings.PROJECT_NAME
+    subject = f"{project_name} - Verify your email"
+    link = f"{settings.API_PUBLIC_URL}{settings.API_V1_STR}/auth/verify-email?token={token}"
+    html_content = render_email_template(
+        template_name="verify_email.html",
+        context={
+            "project_name": settings.PROJECT_NAME,
+            "username": email,
+            "email": email_to,
+            "link": link,
+            "valid_minutes": settings.EMAIL_VERIFICATION_TOKEN_EXPIRE_MINUTES,
         },
     )
     return EmailData(html_content=html_content, subject=subject)
