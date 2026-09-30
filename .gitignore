@@ -31,3 +31,12 @@ coverage/
 # Design and browser companion artifacts
 .playwright-mcp/
 .superpowers/
+
+# Full Stack FastAPI Template paths
+.vscode/*
+!.vscode/extensions.json
+backend/app/frontend/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
