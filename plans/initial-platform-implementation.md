@@ -24,6 +24,23 @@
 - 健康检查、构建或静态测试通过不等于产品验收通过；外部凭据或线上条件缺失时标为阻塞/未验证。
 - 每个任务结束都必须运行其验证命令并创建清晰 Git 提交；没有确认远程地址时不推送。
 
+## Review resolutions and execution gates
+
+以下闸门吸收了只读子代理对本计划的审查结果；它们优先于后续 Task 中较早的简写示例。设计方向和模板改造方向已经由用户确认，若设计文档再次变化，必须暂停实现并重新核对本计划。
+
+- **模板与依赖可复现：** Task 1 必须按已解析的 $templateRef 检出，不得以浮动分支作为导入依据；保留模板随附的 uv.lock 作为上游来源证据，并从同一 SHA 生成并提交 E:\AI_projects\yeyu-api\backend\requirements-runtime.lock.txt 和 E:\AI_projects\yeyu-api\backend\requirements-dev.lock.txt。conda 环境仍是唯一运行环境，安装使用这些带 hash 的锁文件；若导出结果缺少 hash，任务失败而不是退回无版本约束的 pip install。记录 node --version、pnpm --version，在 E:\AI_projects\yeyu-api\frontend\package.json 固定 packageManager，后续安装统一使用 pnpm install --frozen-lockfile。
+- **本地集成栈：** Compose project name 固定为 yeyu-api，服务名固定为 postgres、redis、mailpit、backend、frontend，并为依赖服务提供 healthcheck。集成测试前按顺序执行 docker compose ... up -d --wait postgres redis mailpit、conda run -n yeyu-api alembic upgrade head、测试数据初始化；Playwright 通过配置的 webServer 启动 backend/frontend 并在结束后清理。当前机器没有 Docker 时只报告 blocked，不安装 Docker 或修改服务器。
+- **路由与 OpenAPI：** 每个新增 FastAPI router 必须在 E:\AI_projects\yeyu-api\backend\app\api\main.py 注册；每个后端 schema/路由 Task 结束都重新生成 E:\AI_projects\yeyu-api\frontend\src\client\，并运行 E:\AI_projects\yeyu-api\backend\tests\api\test_openapi_contract.py，断言 /api/catalog、/v1/*、/health、/ready 和 API Key security scheme 存在。
+- **GitHub OAuth 状态机：** state 使用随机 nonce、Redis 保存、10 分钟 TTL、严格单次消费；授权码流程使用 PKCE S256，callback URI 只接受配置中的精确值；管理会话 Cookie 使用 HttpOnly、Secure、SameSite=Lax，绑定动作要求当前登录、重新认证和 GitHub 已验证邮箱。provider/subject 唯一，禁止把两个已有账号自动合并；OAuth access token 交换后只用于当前请求，不落库、不写日志。
+- **API Key 调试：** 列表、轮换历史和任何管理接口都不返回旧 secret；在线调试只能使用刚创建时内存中的 secret，或由用户再次粘贴 secret，关闭页面后清空。不得新增“查询完整 Key”接口；E2E 必须验证实际 X-API-Key 请求头、Cookie 不能替代 API Key，以及刷新后 secret 不可恢复。
+- **额度与并发：** PolicyService 必须返回可释放的 QuotaLease；并发槽使用带 TTL 的 Redis 原子 acquire/release，并在 finally 释放；每日额度使用带条件的 PostgreSQL 更新，跨日按 UTC 计算。策略通过后即计入一次调用权重，策略拒绝不计入；上游失败不退回额度，但必须记录错误类别和 stale 结果。
+- **试验池强制闸门：** 试验池必须有 TrialRecord 数据模型、证据状态、管理员审批路由和数据库约束；公开 registry 只接受数据库状态为 approved 且 adapter 在 allowlist 内的记录。E:\AI_projects\yeyu-api\docs\candidate-api-trial-pool.md 只能保存来源、条款和 Secret 引用名，严禁写实际账号、Key 或 Token。
+- **SSRF 与资源限制：** allowlist 校验既要在 DNS 解析时执行，也要在实际连接前执行；默认禁用重定向，若业务需要则逐跳重新校验；覆盖 IPv4/IPv6 私网、环回、链路本地、云元数据、DNS rebinding、IDN/编码绕过。请求体和上游响应都必须流式限制大小，连接池、总超时、重试次数和并发槽有硬上限。
+- **UI 验收：** Playwright 至少包含 Chromium desktop 和移动 viewport 两个 project，使用独立 storage state 和固定 seed；必须覆盖 A「索引台」搜索/分类/Quick Start、B「开发者仪表盘」Key/调试/额度，以及真实 method/path/auth/limits/cache 字段，不以静态截图或虚假统计代替。
+- **数据库回滚：** 发布使用 expand/contract 迁移；迁移前有备份和恢复演练，旧应用必须能兼容 expand 阶段 schema。回滚脚本默认只回滚应用版本，不自动 downgrade 或删除数据库；数据库恢复必须是单独、经确认的操作。
+- **迁移验证：** 每个新增 Alembic migration Task 都必须在隔离 PostgreSQL 上执行 upgrade head、downgrade -1、upgrade head，并验证空库和已有模板库；任何 downgrade 失败都不能标记 Task 完成。
+- **文件保护：** 后续 Task 中所有 git add --all 简写均视为废弃；执行者必须先运行完整绝对路径的 git status，只对该 Task 的明确文件逐个 git add --，发现无关改动立即停止并报告。
+
 ## Scope and release gates
 
 本计划覆盖首期可上线 MVP，但按独立可验收子系统拆分。先完成基础和身份，再完成 Key/策略，再完成执行器/缓存，再完成 UI/管理端，最后才准备部署。生产 DNS、Nginx、证书、服务器账号和权限变更不在默认执行授权内，必须在 Task 9 前另行说明影响、验证和回滚并等待确认。
@@ -41,6 +58,8 @@
 - `E:\AI_projects\yeyu-api\backend\app\services\github_oauth.py`：Authlib GitHub 授权码流程和身份绑定。
 - `E:\AI_projects\yeyu-api\backend\app\services\api_keys.py`：随机 Key、pepper 哈希、撤销和轮换。
 - `E:\AI_projects\yeyu-api\backend\app\services\policy.py`：Key/账号/IP/接口权重策略和每日用量。
+- `E:\AI_projects\yeyu-api\backend\app\services\quota.py`：Redis 并发租约、原子 acquire/release 和失败清理。
+- `E:\AI_projects\yeyu-api\backend\app\services\trial_pool.py`：候选接口证据、审批状态和公开注册闸门。
 - `E:\AI_projects\yeyu-api\backend\app\services\cache.py`：参数指纹、缓存元数据和 stale fallback。
 - `E:\AI_projects\yeyu-api\backend\app\services\execution\`：执行上下文、统一响应、适配器注册和超时控制。
 - `E:\AI_projects\yeyu-api\backend\app\services\execution\adapters\`：明确的自营工具和已批准内容适配器。
@@ -48,12 +67,14 @@
 - `E:\AI_projects\yeyu-api\backend\app\core\security.py`：密码、管理 Token、API Key 认证依赖和脱敏工具。
 - `E:\AI_projects\yeyu-api\backend\app\alembic\versions\`：每个数据变更独立迁移。
 - `E:\AI_projects\yeyu-api\backend\tests\`：后端单元、API、数据库和 Redis 集成测试。
+- `E:\AI_projects\yeyu-api\backend\tests\api\test_openapi_contract.py`：路由注册、鉴权 scheme 和健康端点契约。
 - `E:\AI_projects\yeyu-api\frontend\src\routes\`：首页、目录、详情、用户中心和管理路由。
 - `E:\AI_projects\yeyu-api\frontend\src\components\ApiCatalog\`：搜索、分类、卡片、状态和 Quick Start。
 - `E:\AI_projects\yeyu-api\frontend\src\components\ApiKeys\`：创建、一次性显示、撤销和轮换交互。
 - `E:\AI_projects\yeyu-api\frontend\src\components\Admin\`：沿用模板管理组件并扩展接口/策略/试验池页面。
 - `E:\AI_projects\yeyu-api\frontend\src\client\`：OpenAPI 生成结果，只能由生成命令更新。
 - `E:\AI_projects\yeyu-api\frontend\tests\`：Playwright 登录、目录、Key、调试和管理员隔离。
+- `E:\AI_projects\yeyu-api\frontend\playwright.config.ts`：desktop/mobile project、webServer、storage state 和测试清理。
 - `E:\AI_projects\yeyu-api\deploy\`：生产 Compose、Nginx 示例、只读 preflight、发布/回滚脚本。
 - `E:\AI_projects\yeyu-api\docs\candidate-api-trial-pool.md`：第三方候选证据表和发布状态。
 - `E:\AI_projects\yeyu-api\docs\release-checklist.md`：本地、部署和线上验收边界。
@@ -65,7 +86,7 @@
 **Files:**
 - Create: `E:\AI_projects\yeyu-api\backend\`、`E:\AI_projects\yeyu-api\frontend\`、`E:\AI_projects\yeyu-api\compose.yml`、`E:\AI_projects\yeyu-api\compose.override.yml`、`E:\AI_projects\yeyu-api\backend\pyproject.toml`、`E:\AI_projects\yeyu-api\frontend\package.json` 等官方模板文件。
 - Modify: `E:\AI_projects\yeyu-api\.gitignore`、`E:\AI_projects\yeyu-api\README.md`、`E:\AI_projects\yeyu-api\frontend\package.json`。
-- Create: `E:\AI_projects\yeyu-api\docs\framework-baseline.md`、`E:\AI_projects\yeyu-api\.env.example`、`E:\AI_projects\yeyu-api\frontend\pnpm-lock.yaml`。
+- Create: `E:\AI_projects\yeyu-api\docs\framework-baseline.md`、`E:\AI_projects\yeyu-api\.env.example`、`E:\AI_projects\yeyu-api\frontend\pnpm-lock.yaml`、`E:\AI_projects\yeyu-api\frontend\.node-version`、`E:\AI_projects\yeyu-api\backend\requirements-runtime.lock.txt`、`E:\AI_projects\yeyu-api\backend\requirements-dev.lock.txt`。
 - Test: `E:\AI_projects\yeyu-api\backend\tests\conftest.py`、`E:\AI_projects\yeyu-api\frontend\tests\config.ts`（沿用模板并只改路径/命令）。
 
 **Interfaces:**
@@ -90,7 +111,10 @@ $staging = 'E:\AI_projects\yeyu-api-template-staging'
 $templateUrl = 'https://github.com/fastapi/full-stack-fastapi-template.git'
 $templateRef = (git ls-remote $templateUrl 'refs/heads/master' | ForEach-Object { ($_ -split '\s+')[0] })
 if ([string]::IsNullOrWhiteSpace($templateRef)) { throw 'template ref unavailable' }
-git clone --depth 1 --branch master 'https://github.com/fastapi/full-stack-fastapi-template.git' $staging
+if (Test-Path -LiteralPath $staging) { throw "staging directory already exists: $staging" }
+git clone --depth 1 'https://github.com/fastapi/full-stack-fastapi-template.git' $staging
+$checkoutResult = git -C $staging checkout --detach $templateRef 2>&1
+if ($LASTEXITCODE -ne 0) { throw "template SHA checkout failed: $checkoutResult" }
 $stagingRef = git -C $staging rev-parse HEAD
 if ($stagingRef -ne $templateRef) { throw "template changed during clone: expected $templateRef, got $stagingRef" }
 $stagingRef
@@ -112,16 +136,21 @@ Expected: 暂存仓库 HEAD 等于 Step 1 的 SHA；暂存目录不在项目根�
 ```powershell
 conda create -n yeyu-api python=3.14 -y
 conda run -n yeyu-api python -m pip install --upgrade pip
-conda run -n yeyu-api python -m pip install --editable 'E:\AI_projects\yeyu-api\backend'
-conda run -n yeyu-api python -m pip install 'pytest<10,>=7.4.3' 'mypy<3,>=1.8' 'ty>=0.0.25' 'ruff<1,>=0.2.2' 'coverage<8,>=7.4.3'
+conda run -n yeyu-api python -m pip install uv
+conda run -n yeyu-api uv export --project 'E:\AI_projects\yeyu-api\backend' --locked --format requirements.txt --no-dev --output-file 'E:\AI_projects\yeyu-api\backend\requirements-runtime.lock.txt'
+conda run -n yeyu-api uv export --project 'E:\AI_projects\yeyu-api\backend' --locked --format requirements.txt --all-groups --output-file 'E:\AI_projects\yeyu-api\backend\requirements-dev.lock.txt'
+conda run -n yeyu-api python -m pip install --no-deps --editable 'E:\AI_projects\yeyu-api\backend'
+conda run -n yeyu-api python -m pip install --require-hashes --requirement 'E:\AI_projects\yeyu-api\backend\requirements-runtime.lock.txt'
+conda run -n yeyu-api python -m pip install --require-hashes --requirement 'E:\AI_projects\yeyu-api\backend\requirements-dev.lock.txt'
 conda run -n yeyu-api python --version
+conda run -n yeyu-api uv --version
 ```
 
 Expected: Python 版本满足模板的 `>=3.14,<4.0`；命令没有使用 base 或 `WindowsApps\python.exe`。
 
 - [ ] **Step 6: 把前端脚本从 Bun 入口迁移为 pnpm 入口**
 
-将 `frontend\package.json` 中的 `bunx playwright` 改为 `pnpm exec playwright`，运行以下命令生成并提交 pnpm 锁文件：
+将 `frontend\package.json` 中的 `bunx playwright` 改为 `pnpm exec playwright`，并使用 apply_patch 把 `packageManager` 固定为 `pnpm@10.28.2`、创建 `frontend\.node-version`（内容为 `24.18.0`），再运行以下命令生成并提交 pnpm 锁文件：
 
 ```powershell
 pnpm --dir 'E:\AI_projects\yeyu-api\frontend' install
@@ -144,7 +173,8 @@ Expected: 后端和前端基线通过；本机若无 Docker，只记录 `docker 
 - [ ] **Step 8: 提交**
 
 ```powershell
-git -C 'E:\AI_projects\yeyu-api' add --all
+git -C 'E:\AI_projects\yeyu-api' status --short --branch
+# 仅对本 Task Files/Test 列出的完整路径逐项执行 git -C 'E:\AI_projects\yeyu-api' add --；禁止暂存无关改动。
 git -C 'E:\AI_projects\yeyu-api' commit -m "build: adopt FastAPI template baseline"
 ```
 
@@ -155,13 +185,13 @@ git -C 'E:\AI_projects\yeyu-api' commit -m "build: adopt FastAPI template baseli
 **Files:**
 - Modify: `E:\AI_projects\yeyu-api\backend\app\models.py`、`E:\AI_projects\yeyu-api\backend\app\api\routes\login.py`、`E:\AI_projects\yeyu-api\backend\app\api\routes\users.py`、`E:\AI_projects\yeyu-api\backend\app\core\config.py`、`E:\AI_projects\yeyu-api\backend\app\core\security.py`、`E:\AI_projects\yeyu-api\backend\app\utils.py`。
 - Create: `E:\AI_projects\yeyu-api\backend\app\services\identity.py`、`E:\AI_projects\yeyu-api\backend\app\services\github_oauth.py`、`E:\AI_projects\yeyu-api\backend\app\schemas\identity.py`、`E:\AI_projects\yeyu-api\backend\app\alembic\versions\20260930_add_identity_tables.py`。
-- Create: `E:\AI_projects\yeyu-api\backend\app\email-templates\verify_email.html`。
+- Create: `E:\AI_projects\yeyu-api\packages\react-email\emails\verify_email.tsx`；Generate: `E:\AI_projects\yeyu-api\backend\app\email-templates\verify_email.html`，沿用模板的 React Email 导出链路，不直接把生成 HTML 当作唯一源文件。
 - Test: `E:\AI_projects\yeyu-api\backend\tests\api\routes\test_identity.py`、`E:\AI_projects\yeyu-api\backend\tests\services\test_identity.py`。
 
 **Interfaces:**
 - `EmailVerificationService.request(user_id: UUID) -> None`：生成一次性 token 哈希、写入过期时间并发送邮件；不存在用户时使用相同响应语义。
 - `EmailVerificationService.verify(raw_token: str) -> User`：原子消费未过期 token，重复/过期/错误 token 统一失败。
-- `GitHubOAuthService.start(request: Request) -> RedirectResponse` 和 `GitHubOAuthService.callback(request: Request) -> RedirectResponse`：只请求 `read:user user:email`，交换后读取身份并丢弃不需要的 OAuth access token。
+- `GitHubOAuthService.start(request: Request) -> RedirectResponse` 和 `GitHubOAuthService.callback(request: Request) -> RedirectResponse`：只请求 `read:user user:email`，使用 PKCE S256；state 为随机 nonce，在 Redis 保存 10 分钟并严格单次消费；callback URI 必须精确匹配配置值，交换后读取身份并丢弃不需要的 OAuth access token。
 - `IdentityService.link_github(user_id: UUID, provider_subject: str, email: str, email_verified: bool) -> OAuthIdentity`：已绑定到其他用户返回冲突；只有已验证匹配邮箱或当前已登录用户主动绑定才能合并。
 
 - [ ] **Step 1: 写验证状态和 token 的失败测试**
@@ -191,7 +221,7 @@ Expected: FAIL，失败原因是 `email_verified`、token service 或 OAuthIdent
 
 - [ ] **Step 3: 添加模型、迁移和服务**
 
-新增 `OAuthIdentity`、`EmailVerificationToken` 字段：provider subject 唯一约束、用户外键、token 哈希、过期时间、消费时间；token 表不保存原文。GitHub OAuth 使用 Authlib Starlette client，OAuth state 由会话/Redis 保存并校验。
+新增 `OAuthIdentity`、`EmailVerificationToken` 字段：provider subject 唯一约束、用户外键、token 哈希、过期时间、消费时间；token 表不保存原文。GitHub OAuth 使用 Authlib Starlette client，state nonce 由 Redis 保存并校验，Cookie 使用 HttpOnly、Secure、SameSite=Lax；主动绑定要求已登录并重新认证，禁止两个已有账号自动合并。邮件必须修改 `packages\react-email\emails\verify_email.tsx` 后执行模板现有导出命令，再校验生成的 HTML 已被 Mailpit 测试读取。
 
 - [ ] **Step 4: 实现邮件验证、GitHub 登录和主动绑定**
 
@@ -208,7 +238,8 @@ Expected: 验证、重置、重复 token、账号冲突、GitHub callback state 
 - [ ] **Step 6: 提交**
 
 ```powershell
-git -C 'E:\AI_projects\yeyu-api' add --all
+git -C 'E:\AI_projects\yeyu-api' status --short --branch
+# 仅对本 Task Files/Test 列出的完整路径逐项执行 git -C 'E:\AI_projects\yeyu-api' add --；禁止暂存无关改动。
 git -C 'E:\AI_projects\yeyu-api' commit -m "feat: add verified account and GitHub identity flows"
 ```
 
@@ -219,7 +250,7 @@ git -C 'E:\AI_projects\yeyu-api' commit -m "feat: add verified account and GitHu
 **Files:**
 - Modify: `E:\AI_projects\yeyu-api\backend\app\models.py`、`E:\AI_projects\yeyu-api\backend\app\api\main.py`、`E:\AI_projects\yeyu-api\backend\app\api\routes\__init__.py`。
 - Create: `E:\AI_projects\yeyu-api\backend\app\schemas\catalog.py`、`E:\AI_projects\yeyu-api\backend\app\services\catalog.py`、`E:\AI_projects\yeyu-api\backend\app\api\routes\catalog.py`、`E:\AI_projects\yeyu-api\backend\app\api\routes\admin_catalog.py`、`E:\AI_projects\yeyu-api\backend\app\alembic\versions\20261001_add_catalog_tables.py`。
-- Test: `E:\AI_projects\yeyu-api\backend\tests\api\routes\test_catalog.py`、`E:\AI_projects\yeyu-api\backend\tests\services\test_catalog.py`。
+- Test: `E:\AI_projects\yeyu-api\backend\tests\api\routes\test_catalog.py`、`E:\AI_projects\yeyu-api\backend\tests\services\test_catalog.py`、`E:\AI_projects\yeyu-api\backend\tests\api\test_openapi_contract.py`。
 - Create: `E:\AI_projects\yeyu-api\docs\api-catalog-contract.md`。
 
 **Interfaces:**
@@ -252,22 +283,24 @@ conda run -n yeyu-api python -m pytest 'E:\AI_projects\yeyu-api\backend\tests\ap
 
 Expected: 初次 FAIL；实现后 PASS，且公开目录不要求 API Key，调用接口本身仍要求 API Key。
 
-- [ ] **Step 3: 生成 OpenAPI 文档契约和前端客户端**
+- [ ] **Step 3: 注册路由、生成 OpenAPI 文档契约和前端客户端**
 
-在 `docs\api-catalog-contract.md` 固定统一响应、分页和错误码；运行：
+在 `backend\app\api\main.py` 显式注册 catalog/admin_catalog router；在 `docs\api-catalog-contract.md` 固定统一响应、分页和错误码；运行：
 
 ```powershell
 pnpm --dir 'E:\AI_projects\yeyu-api\frontend' run generate-client
-git -C 'E:\AI_projects\yeyu-api' diff -- 'frontend\src\client'
+conda run -n yeyu-api python -m pytest 'E:\AI_projects\yeyu-api\backend\tests\api\test_openapi_contract.py' -q
+git -C 'E:\AI_projects\yeyu-api' diff -- 'E:\AI_projects\yeyu-api\frontend\src\client'
 ```
 
-Expected: 生成客户端只反映公开 schema，未手工编辑生成文件。
+Expected: `/api/catalog`、`/api/catalog/{slug}` 和 admin 路由出现在 OpenAPI；生成客户端只反映公开 schema，未手工编辑生成文件。
 
 - [ ] **Step 4: 运行后端全量回归并提交**
 
 ```powershell
 conda run -n yeyu-api python -m pytest 'E:\AI_projects\yeyu-api\backend\tests' -q
-git -C 'E:\AI_projects\yeyu-api' add --all
+git -C 'E:\AI_projects\yeyu-api' status --short --branch
+# 仅对本 Task Files/Test 列出的完整路径逐项执行 git -C 'E:\AI_projects\yeyu-api' add --；禁止暂存无关改动。
 git -C 'E:\AI_projects\yeyu-api' commit -m "feat: add API catalog and documentation contract"
 ```
 
@@ -276,30 +309,30 @@ git -C 'E:\AI_projects\yeyu-api' commit -m "feat: add API catalog and documentat
 ### Task 4: API Key 生命周期、独立鉴权和策略模型
 
 **Files:**
-- Modify: `E:\AI_projects\yeyu-api\backend\app\models.py`、`E:\AI_projects\yeyu-api\backend\app\api\deps.py`、`E:\AI_projects\yeyu-api\backend\app\core\security.py`、`E:\AI_projects\yeyu-api\backend\app\core\config.py`。
+- Modify: `E:\AI_projects\yeyu-api\backend\app\models.py`、`E:\AI_projects\yeyu-api\backend\app\api\deps.py`、`E:\AI_projects\yeyu-api\backend\app\api\main.py`、`E:\AI_projects\yeyu-api\backend\app\core\security.py`、`E:\AI_projects\yeyu-api\backend\app\core\config.py`。
 - Create: `E:\AI_projects\yeyu-api\backend\app\schemas\api_keys.py`、`E:\AI_projects\yeyu-api\backend\app\schemas\policy.py`、`E:\AI_projects\yeyu-api\backend\app\services\api_keys.py`、`E:\AI_projects\yeyu-api\backend\app\services\policy.py`、`E:\AI_projects\yeyu-api\backend\app\api\routes\api_keys.py`、`E:\AI_projects\yeyu-api\backend\app\api\routes\admin_policies.py`、`E:\AI_projects\yeyu-api\backend\app\alembic\versions\20261002_add_key_policy_tables.py`。
-- Test: `E:\AI_projects\yeyu-api\backend\tests\services\test_api_keys.py`、`E:\AI_projects\yeyu-api\backend\tests\api\routes\test_api_keys.py`、`E:\AI_projects\yeyu-api\backend\tests\api\routes\test_api_auth_boundary.py`。
+- Test: `E:\AI_projects\yeyu-api\backend\tests\services\test_api_keys.py`、`E:\AI_projects\yeyu-api\backend\tests\api\routes\test_api_keys.py`、`E:\AI_projects\yeyu-api\backend\tests\api\routes\test_api_auth_boundary.py`、`E:\AI_projects\yeyu-api\backend\tests\api\test_openapi_contract.py`。
 
 **Interfaces:**
 - `ApiKeyService.create(user_id: UUID, label: str | None) -> CreatedApiKey`：返回 `{id, prefix, secret, created_at}`，secret 只进入该响应对象一次。
-- `ApiKeyService.authenticate(raw_key: str) -> ApiKeyPrincipal | None`：使用 `HMAC-SHA256(server_pepper, raw_key)` 查询 hash，不把 raw key 写日志。
+- `ApiKeyService.authenticate(raw_key: str) -> ApiKeyPrincipal | None`：使用带版本的 `HMAC-SHA256(server_pepper, raw_key)` 查询 hash，不把 raw key 写日志；pepper 只来自持久化 Secret 引用，支持明确的版本迁移。
 - `ApiKeyService.revoke(key_id: UUID, user_id: UUID) -> None` 和 `rotate(key_id: UUID, user_id: UUID) -> CreatedApiKey`：轮换先撤销旧 Key，再创建新 Key。
 - `get_api_key_principal(request: Request) -> ApiKeyPrincipal`：只读 `X-API-Key`，不读取管理 Cookie。
-- `PolicyService.evaluate(principal: ApiKeyPrincipal, api: ApiDefinition, ip: IPvAnyAddress, now: datetime) -> PolicyDecision`。
+- `PolicyService.evaluate(principal: ApiKeyPrincipal, api: ApiDefinition, ip: IPvAnyAddress, now: datetime) -> PolicyDecision`：仅在账号已验证、未封禁、Key 未撤销时执行；Key 生成使用至少 256 位 CSPRNG，轮换失败时旧 Key 保持有效，审计只记录 prefix/id。
 
 - [ ] **Step 1: 写 Key 一次显示、撤销、轮换和 Cookie 隔离测试**
 
 ```python
-def test_created_secret_is_not_returned_by_list(client, verified_user):
-    created = client.post('/api/keys', json={'label': 'local'}).json()
-    listed = client.get('/api/keys').json()['data']
+def test_created_secret_is_not_returned_by_list(authenticated_client, verified_user):
+    created = authenticated_client.post('/api/keys', json={'label': 'local'}).json()['data']
+    listed = authenticated_client.get('/api/keys').json()['data']
     assert 'secret' in created
     assert all('secret' not in item for item in listed)
 
-def test_revoked_key_and_management_cookie_cannot_call_v1(client, api_key, management_cookie):
-    client.post(f"/api/keys/{api_key.id}/revoke", cookies=management_cookie)
-    assert client.get('/v1/tools/uuid', headers={'X-API-Key': api_key.secret}).status_code == 401
-    assert client.get('/v1/tools/uuid', cookies=management_cookie).status_code == 401
+def test_revoked_key_and_management_cookie_cannot_call_v1(authenticated_client, api_key, management_cookie):
+    authenticated_client.post(f"/api/keys/{api_key.id}/revoke", cookies=management_cookie)
+    assert authenticated_client.get('/v1/tools/uuid', headers={'X-API-Key': api_key.secret}).status_code == 401
+    assert authenticated_client.get('/v1/tools/uuid', cookies=management_cookie).status_code == 401
 ```
 
 - [ ] **Step 2: 运行失败测试并实现哈希/生命周期**
@@ -330,7 +363,8 @@ Expected: 初次 FAIL；实现后 PASS，数据库只出现 prefix/hash，应用
 
 ```powershell
 conda run -n yeyu-api python -m pytest 'E:\AI_projects\yeyu-api\backend\tests\api\routes\test_api_auth_boundary.py' -q
-git -C 'E:\AI_projects\yeyu-api' add --all
+git -C 'E:\AI_projects\yeyu-api' status --short --branch
+# 仅对本 Task Files/Test 列出的完整路径逐项执行 git -C 'E:\AI_projects\yeyu-api' add --；禁止暂存无关改动。
 git -C 'E:\AI_projects\yeyu-api' commit -m "feat: add API key lifecycle and auth boundary"
 ```
 
@@ -340,15 +374,16 @@ git -C 'E:\AI_projects\yeyu-api' commit -m "feat: add API key lifecycle and auth
 
 **Files:**
 - Modify: `E:\AI_projects\yeyu-api\compose.yml`、`E:\AI_projects\yeyu-api\compose.override.yml`、`E:\AI_projects\yeyu-api\backend\app\api\main.py`、`E:\AI_projects\yeyu-api\backend\app\core\config.py`。
-- Create: `E:\AI_projects\yeyu-api\backend\app\services\redis.py`、`E:\AI_projects\yeyu-api\backend\app\services\cache.py`、`E:\AI_projects\yeyu-api\backend\app\services\execution\models.py`、`E:\AI_projects\yeyu-api\backend\app\services\execution\registry.py`、`E:\AI_projects\yeyu-api\backend\app\services\execution\runner.py`、`E:\AI_projects\yeyu-api\backend\app\services\execution\adapters\tools.py`、`E:\AI_projects\yeyu-api\backend\app\services\execution\adapters\content.py`、`E:\AI_projects\yeyu-api\backend\app\api\routes\public_api.py`、`E:\AI_projects\yeyu-api\backend\app\alembic\versions\20261003_add_usage_cache_tables.py`。
-- Create: `E:\AI_projects\yeyu-api\backend\tests\services\test_policy.py`、`E:\AI_projects\yeyu-api\backend\tests\services\test_cache.py`、`E:\AI_projects\yeyu-api\backend\tests\services\test_execution.py`、`E:\AI_projects\yeyu-api\backend\tests\api\routes\test_public_api.py`。
-- Create: `E:\AI_projects\yeyu-api\docs\candidate-api-trial-pool.md`。
+- Create: `E:\AI_projects\yeyu-api\backend\app\services\redis.py`、`E:\AI_projects\yeyu-api\backend\app\services\quota.py`、`E:\AI_projects\yeyu-api\backend\app\services\cache.py`、`E:\AI_projects\yeyu-api\backend\app\services\trial_pool.py`、`E:\AI_projects\yeyu-api\backend\app\services\execution\models.py`、`E:\AI_projects\yeyu-api\backend\app\services\execution\registry.py`、`E:\AI_projects\yeyu-api\backend\app\services\execution\runner.py`、`E:\AI_projects\yeyu-api\backend\app\services\execution\adapters\tools.py`、`E:\AI_projects\yeyu-api\backend\app\services\execution\adapters\content.py`、`E:\AI_projects\yeyu-api\backend\app\api\routes\public_api.py`、`E:\AI_projects\yeyu-api\backend\app\api\routes\admin_trial_pool.py`、`E:\AI_projects\yeyu-api\backend\app\alembic\versions\20261003_add_usage_cache_tables.py`、`E:\AI_projects\yeyu-api\backend\app\alembic\versions\20261004_add_trial_pool_tables.py`。
+- Create: `E:\AI_projects\yeyu-api\backend\tests\services\test_policy.py`、`E:\AI_projects\yeyu-api\backend\tests\services\test_cache.py`、`E:\AI_projects\yeyu-api\backend\tests\services\test_execution.py`、`E:\AI_projects\yeyu-api\backend\tests\services\test_trial_pool.py`、`E:\AI_projects\yeyu-api\backend\tests\api\routes\test_public_api.py`、`E:\AI_projects\yeyu-api\backend\tests\api\routes\test_admin_trial_pool.py`。
+- Create: `E:\AI_projects\yeyu-api\docs\candidate-api-trial-pool.md`（Task 8 只补充证据，不重复创建）。
 
 **Interfaces:**
 - `ApiAdapter.execute(context: ExecutionContext, params: Mapping[str, Any]) -> AdapterResult`；adapter 不接收用户任意 URL。
 - `ExecutionContext` 包含 `request_id`、`api_slug`、`api_key_id`、`user_id`、`client_ip`、`timeout_ms` 和 `now`。
-- `PolicyService.evaluate(...) -> PolicyDecision` 返回 `allowed`、`reason`、`retry_after_seconds`、`daily_remaining` 和 `minute_remaining`。
-- `CacheService.get(cache_key: str) -> CacheValue | None`、`set(...) -> None`、`stale_value(...) -> CacheValue | None`；响应元数据必须包含 `cache_hit`、`stale` 和 `data_at`。
+- `PolicyService.evaluate(...) -> PolicyDecision` 返回 `allowed`、`reason`、`retry_after_seconds`、`daily_remaining` 和 `minute_remaining`；`PolicyService.acquire(...) -> QuotaLease` 必须在 `finally` 释放并发槽。
+- `CacheService.get(cache_key: str) -> CacheValue | None`、`set(...) -> None`、`stale_value(...) -> CacheValue | None`；响应元数据必须包含 `cache_hit`、`stale`、`stale_reason` 和 `data_at`，并受最大 stale age 限制。
+- `TrialPoolService.approve(trial_id: UUID, actor_id: UUID) -> TrialRecord`：只有管理员能审批，registry 只接受 approved 且 allowlist 命中的记录，证据 Markdown 不参与运行时授权。
 - `ApiRunner.run(slug: str, context: ExecutionContext, params: Mapping[str, Any]) -> ApiResponse`：统一成功、上游超时、无缓存、stale fallback 和参数错误。
 
 - [ ] **Step 1: 写限流、额度、固定适配器和 stale 测试**
@@ -363,7 +398,10 @@ def test_policy_blocks_second_request_when_minute_limit_is_one(redis, db, princi
     assert second.reason == 'MINUTE_LIMIT'
 
 def test_stale_cache_is_explicit(cache):
-    value = cache.stale_value('weather:city-a', now=expired_at)
+    now = datetime.now(timezone.utc)
+    expired_at = now - timedelta(hours=1)
+    cache.seed('weather:city-a', data_at=expired_at, payload={'temperature': 20})
+    value = cache.stale_value('weather:city-a', now=now)
     assert value is not None
     assert value.meta.stale is True
     assert value.meta.data_at < now
@@ -376,7 +414,8 @@ def test_adapter_registry_rejects_unknown_slug(registry):
 - [ ] **Step 2: 运行失败测试并接入 Redis/PostgreSQL**
 
 ```powershell
-docker compose -f 'E:\AI_projects\yeyu-api\compose.yml' up -d postgres redis
+docker compose -p yeyu-api -f 'E:\AI_projects\yeyu-api\compose.yml' up -d --wait postgres redis mailpit
+conda run -n yeyu-api alembic upgrade head
 conda run -n yeyu-api python -m pytest 'E:\AI_projects\yeyu-api\backend\tests\services\test_policy.py' 'E:\AI_projects\yeyu-api\backend\tests\services\test_cache.py' -q
 ```
 
@@ -384,7 +423,7 @@ Expected: 当前本机没有 Docker 时记录为未验证；在具备 Docker 的
 
 - [ ] **Step 3: 实现 Redis 原子限流和 PostgreSQL 每日计数**
 
-分钟/IP/并发计数使用 Redis 原子脚本，并设置到期时间；每日用量使用 PostgreSQL `usage_daily` 唯一键 `(utc_date, user_id, api_key_id, api_slug)` 的原子 upsert；接口权重在同一事务内累加。任何一个限额拒绝都不执行上游。
+分钟/IP/并发计数使用 Redis 原子脚本，并设置到期时间；并发使用 `QuotaLease` 的 acquire/release 和崩溃 TTL；每日用量使用 PostgreSQL `usage_daily` 唯一键 `(utc_date, user_id, api_key_id, api_slug)` 的带条件更新；接口权重在同一事务内累加。任何一个限额拒绝都不执行上游，策略通过后即计费，上游失败不退回额度。
 
 - [ ] **Step 4: 实现低风险工具适配器**
 
@@ -392,17 +431,18 @@ Expected: 当前本机没有 Docker 时记录为未验证；在具备 Docker 的
 
 - [ ] **Step 5: 实现内容适配器协议和试验池**
 
-`content.py` 只实现 `AllowlistedHttpAdapter` 的安全边界、超时、有限重试、禁止重定向到未验证目标、响应大小限制和缓存/stale 流程；真实 provider 必须先写入 `candidate-api-trial-pool.md` 的来源、条款、额度、再分发、署名、隐私和成本证据，并显式标记 `publishable` 后才能注册到公开目录。
+`content.py` 只实现 `AllowlistedHttpAdapter` 的安全边界、DNS/连接前目标复核、超时、有限重试、默认禁止重定向、响应大小限制和缓存/stale 流程；真实 provider 必须先建立 TrialRecord，补齐来源、条款、额度、再分发、署名、隐私和成本证据，由管理员批准且 adapter 在 allowlist 后才能注册到公开目录。Markdown 只作证据索引，不作授权来源。
 
 - [ ] **Step 6: 实现公共调用路由和统一响应**
 
-将 `GET /v1/tools/time`、`GET /v1/tools/uuid` 接入 API Key、策略、执行器和审计元数据；上游内容接口只在试验记录满足发布条件后启用。成功响应包含 `request_id`、`data`、`meta`；失败响应使用 Task 4 的错误结构。
+在 `backend\app\api\main.py` 注册 public_api 和 admin_trial_pool；将 `GET /v1/tools/time`、`GET /v1/tools/uuid` 接入 API Key、策略、执行器和审计元数据；上游内容接口只在 TrialRecord 满足发布条件后启用。成功响应包含 `request_id`、`data`、`meta`；失败响应使用 Task 4 的错误结构。
 
 - [ ] **Step 7: 运行执行层测试并提交**
 
 ```powershell
 conda run -n yeyu-api python -m pytest 'E:\AI_projects\yeyu-api\backend\tests\services\test_execution.py' 'E:\AI_projects\yeyu-api\backend\tests\api\routes\test_public_api.py' -q
-git -C 'E:\AI_projects\yeyu-api' add --all
+git -C 'E:\AI_projects\yeyu-api' status --short --branch
+# 仅对本 Task Files/Test 列出的完整路径逐项执行 git -C 'E:\AI_projects\yeyu-api' add --；禁止暂存无关改动。
 git -C 'E:\AI_projects\yeyu-api' commit -m "feat: add guarded execution, quota and cache layers"
 ```
 
@@ -420,7 +460,7 @@ git -C 'E:\AI_projects\yeyu-api' commit -m "feat: add guarded execution, quota a
 - `ApiSearch` 使用生成客户端调用 `GET /api/catalog`，不在前端复制搜索规则。
 - `QuickStartPanel` 接收 `ApiDetail`，只展示文档中声明的 method/path/auth/limits/cache，不拼接用户输入 URL。
 - `ApiKeyRevealDialog` 只接受 `CreatedApiKey`，关闭后清空 secret state；列表只使用 `ApiKeySummary`。
-- `DebugConsole` 只能对已加载的 `ApiDetail` 执行，未登录或无 Key 时显示明确阻塞原因。
+- `DebugConsole` 只能对已加载的 `ApiDetail` 执行；secret 只接受创建成功后内存中的值或用户再次粘贴的值，未登录、无 Key 或刷新后丢失 secret 时显示明确阻塞原因。
 
 - [ ] **Step 1: 写首页和用户中心 E2E 失败测试**
 
@@ -439,12 +479,19 @@ test('API key secret is shown once and cannot be retrieved from list', async ({ 
   await page.getByRole('button', { name: /关闭|我已保存/ }).click();
   await expect(page.getByText(/yk_live_/)).toHaveCount(0);
 });
+
+test('mobile layout keeps search, quick start, and debug entry usable', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await expect(page.getByRole('textbox', { name: /搜索/ })).toBeVisible();
+  await expect(page.getByText('时间戳与时区')).toBeVisible();
+});
 ```
 
 - [ ] **Step 2: 运行失败测试**
 
 ```powershell
-pnpm --dir 'E:\AI_projects\yeyu-api\frontend' exec playwright test 'E:\AI_projects\yeyu-api\frontend\tests\api-catalog.spec.ts' --project=chromium
+pnpm --dir 'E:\AI_projects\yeyu-api\frontend' exec playwright test 'E:\AI_projects\yeyu-api\frontend\tests\api-catalog.spec.ts' --project=chromium --project=mobile-chromium
 ```
 
 Expected: 初次 FAIL，原因是新的 route/component 尚未存在。
@@ -455,14 +502,15 @@ A 的搜索/分类/状态作为主布局，B 的 Quick Start 作为首屏右侧�
 
 - [ ] **Step 4: 实现详情、在线调试和 Key 生命周期页面**
 
-详情页渲染参数、响应、错误码、curl/JavaScript/Python 示例；调试页要求管理登录并显式选择已创建 Key，公共请求仍通过 `X-API-Key`；创建/轮换 secret 只放在内存状态中。
+详情页渲染参数、响应、错误码、curl/JavaScript/Python 示例；调试页要求管理登录，并使用创建成功后仍在内存中的 secret 或用户再次粘贴的 secret，公共请求仍通过 `X-API-Key`；E2E 监听真实请求，断言存在 `X-API-Key` 且不能只靠 Cookie；列表和刷新页面都不能恢复旧 secret。
 
 - [ ] **Step 5: 运行前端构建和 E2E，并提交**
 
 ```powershell
 pnpm --dir 'E:\AI_projects\yeyu-api\frontend' run build
-pnpm --dir 'E:\AI_projects\yeyu-api\frontend' exec playwright test 'E:\AI_projects\yeyu-api\frontend\tests\api-catalog.spec.ts' 'E:\AI_projects\yeyu-api\frontend\tests\api-key-lifecycle.spec.ts' 'E:\AI_projects\yeyu-api\frontend\tests\debug-console.spec.ts' --project=chromium
-git -C 'E:\AI_projects\yeyu-api' add --all
+pnpm --dir 'E:\AI_projects\yeyu-api\frontend' exec playwright test 'E:\AI_projects\yeyu-api\frontend\tests\api-catalog.spec.ts' 'E:\AI_projects\yeyu-api\frontend\tests\api-key-lifecycle.spec.ts' 'E:\AI_projects\yeyu-api\frontend\tests\debug-console.spec.ts' --project=chromium --project=mobile-chromium
+git -C 'E:\AI_projects\yeyu-api' status --short --branch
+# 仅对本 Task Files/Test 列出的完整路径逐项执行 git -C 'E:\AI_projects\yeyu-api' add --；禁止暂存无关改动。
 git -C 'E:\AI_projects\yeyu-api' commit -m "feat: add A+B catalog and developer console UI"
 ```
 
@@ -512,7 +560,8 @@ def test_redaction_removes_credentials():
 ```powershell
 conda run -n yeyu-api python -m pytest 'E:\AI_projects\yeyu-api\backend\tests\api\routes\test_admin_authorization.py' 'E:\AI_projects\yeyu-api\backend\tests\services\test_redaction.py' -q
 pnpm --dir 'E:\AI_projects\yeyu-api\frontend' exec playwright test 'E:\AI_projects\yeyu-api\frontend\tests\admin-isolation.spec.ts' --project=chromium
-git -C 'E:\AI_projects\yeyu-api' add --all
+git -C 'E:\AI_projects\yeyu-api' status --short --branch
+# 仅对本 Task Files/Test 列出的完整路径逐项执行 git -C 'E:\AI_projects\yeyu-api' add --；禁止暂存无关改动。
 git -C 'E:\AI_projects\yeyu-api' commit -m "feat: add admin controls and redacted audit trail"
 ```
 
@@ -522,11 +571,11 @@ git -C 'E:\AI_projects\yeyu-api' commit -m "feat: add admin controls and redacte
 
 **Files:**
 - Create: `E:\AI_projects\yeyu-api\backend\tests\security\test_ssrf_guards.py`、`E:\AI_projects\yeyu-api\backend\tests\security\test_resource_limits.py`、`E:\AI_projects\yeyu-api\backend\tests\security\test_secret_logging.py`。
-- Create: `E:\AI_projects\yeyu-api\docs\candidate-api-trial-pool.md`、`E:\AI_projects\yeyu-api\docs\release-checklist.md`、`E:\AI_projects\yeyu-api\docs\rollback-runbook.md`。
+- Modify: `E:\AI_projects\yeyu-api\docs\candidate-api-trial-pool.md`（补充 Task 5 结构模板的证据，不保存任何实际账号、Key 或 Token）、`E:\AI_projects\yeyu-api\docs\release-checklist.md`、`E:\AI_projects\yeyu-api\docs\rollback-runbook.md`。
 - Modify: `E:\AI_projects\yeyu-api\backend\app\services\execution\adapters\content.py`、`E:\AI_projects\yeyu-api\backend\app\services\redaction.py`、`E:\AI_projects\yeyu-api\backend\app\core\config.py`。
 
 **Interfaces:**
-- `ProviderTargetValidator.validate(url: AnyHttpUrl, allowlist: ProviderAllowlist) -> NormalizedTarget`：拒绝非 HTTPS、用户名密码、私网/环回/链路本地/云元数据 IP、未允许 host 和未允许端口。
+- `ProviderTargetValidator.validate(url: AnyHttpUrl, allowlist: ProviderAllowlist) -> NormalizedTarget`：拒绝非 HTTPS、用户名密码、私网/环回/链路本地/云元数据 IP、未允许 host 和未允许端口，并在 DNS 解析和实际连接前重复校验。
 - `ResourceLimit.validate_request(body_size: int, json_depth: int, query_length: int, timeout_ms: int) -> None`：超限返回固定错误码。
 - `ReleaseChecklist` 必须区分 `verified`、`blocked`、`not_verified`，不能用 readiness 代替线上产品验收。
 
@@ -548,6 +597,21 @@ def test_secret_never_appears_in_structured_log(caplog):
     log_request(api_key='yk_live_secret-value', authorization='Bearer secret', request_id=request_id)
     assert 'yk_live_secret-value' not in caplog.text
     assert 'Bearer secret' not in caplog.text
+
+@pytest.mark.parametrize('url', [
+    'http://[::1]:8000/admin',
+    'http://[fe80::1]/internal',
+    'https://127.0.0.1.nip.io/data',
+])
+def test_private_ipv6_and_dns_rebinding_targets_are_rejected(url, allowlist):
+    with pytest.raises(ProviderTargetRejected):
+        ProviderTargetValidator.validate(url, allowlist)
+
+def test_redirect_target_is_revalidated(http_client, allowlist):
+    response = http_client.get('https://approved.example/data', follow_redirects=False)
+    assert response.headers['location'].startswith('http://127.0.0.1')
+    with pytest.raises(ProviderTargetRejected):
+        fetch_allowlisted('https://approved.example/data', allowlist)
 ```
 
 - [ ] **Step 2: 运行安全测试并修正真实失败**
@@ -560,7 +624,7 @@ Expected: SSRF、任意重定向、超大请求、过深 JSON、无限重试和 
 
 - [ ] **Step 3: 编写候选接口试验池记录**
 
-每条记录至少包含来源/官方文档、账号或 Key、额度、服务条款/再分发、署名、稳定性/延迟、返回格式、缓存、隐私/合规、成本、推荐动作和证据链接；没有许可证据的条目状态必须是 `trial` 或 `link_only`。
+每条记录至少包含来源/官方文档、账号或 Key 的引用名（不写实际凭据）、额度、服务条款/再分发、署名、稳定性/延迟、返回格式、缓存、隐私/合规、成本、推荐动作和证据链接；没有许可证据的条目状态必须是 `trial` 或 `link_only`。
 
 - [ ] **Step 4: 编写发布与回滚清单**
 
@@ -571,8 +635,12 @@ Expected: SSRF、任意重定向、超大请求、过深 JSON、无限重试和 
 ```powershell
 conda run -n yeyu-api python -m pytest 'E:\AI_projects\yeyu-api\backend\tests' -q
 pnpm --dir 'E:\AI_projects\yeyu-api\frontend' run build
+conda run -n yeyu-api alembic upgrade head
+conda run -n yeyu-api alembic downgrade -1
+conda run -n yeyu-api alembic upgrade head
 git -C 'E:\AI_projects\yeyu-api' diff --check
-git -C 'E:\AI_projects\yeyu-api' add --all
+git -C 'E:\AI_projects\yeyu-api' status --short --branch
+# 仅对本 Task Files/Test 列出的完整路径逐项执行 git -C 'E:\AI_projects\yeyu-api' add --；禁止暂存无关改动。
 git -C 'E:\AI_projects\yeyu-api' commit -m "test: add security and release readiness checks"
 ```
 
@@ -586,13 +654,15 @@ git -C 'E:\AI_projects\yeyu-api' commit -m "test: add security and release readi
 
 **Interfaces:**
 - `preflight.sh` 只读检查 CPU、内存、磁盘、Docker/Compose、80/443/应用端口、现有 Nginx vhost、DNS、证书、独立部署目录和回滚空间，退出码非 0 时不允许 deploy。
-- `deploy.sh release_dir` 只接受已构建版本目录，使用最小权限发布账号，保留上一版本并在 `/health`、`/ready` 和 smoke endpoint 失败时自动停止切换。
-- `rollback.sh release_id` 只切换到已保留且通过健康检查的上一版本，不删除数据库卷、不触碰其他 Compose 项目。
+- `deploy.sh release_dir` 只接受已构建版本目录，先校验目录解析路径在独立发布根目录内且不含 symlink/path traversal，使用最小权限发布账号，保留上一版本并在 `/health`、`/ready` 和 smoke endpoint 失败时自动停止切换。
+- `rollback.sh release_id` 只切换到已保留且通过健康检查的上一版本，不删除数据库卷、不触碰其他 Compose 项目；数据库只允许 expand/contract 兼容迁移，默认不执行 downgrade，恢复数据库必须单独确认。
 
 - [ ] **Step 1: 写部署脚本的 shell 单测/静态检查**
 
 ```powershell
-rg -n --glob '*.sh' 'rm -rf|docker compose down -v|/www/wwwroot/yeyubaka.top|new\.api\.yeyubaka\.top|curl.*X-API-Key|password=|secret=' 'E:\AI_projects\yeyu-api\deploy'
+rg -n --hidden --glob '*' 'rm -rf|docker compose down -v|/www/wwwroot/yeyubaka.top|new\.api\.yeyubaka\.top|curl.*X-API-Key|password=|secret=' 'E:\AI_projects\yeyu-api\deploy'
+rg -n 'api\.yeyubaka\.top|proxy_pass|server_name' 'E:\AI_projects\yeyu-api\deploy\nginx\api.yeyubaka.top.conf.example'
+docker compose -p yeyu-api -f 'E:\AI_projects\yeyu-api\deploy\compose.production.yml' config
 ```
 
 Expected: 不出现删除数据库卷、覆盖个人网站、触碰既有 NewAPI 或硬编码 Secret 的命令；脚本使用显式路径和固定 Compose project name。
@@ -608,8 +678,9 @@ Expected: 不出现删除数据库卷、覆盖个人网站、触碰既有 NewAPI
 - [ ] **Step 4: 编写发布/回滚说明并运行本地静态检查**
 
 ```powershell
-bash 'E:\AI_projects\yeyu-api\deploy\scripts\preflight.sh' --help
-docker compose -f 'E:\AI_projects\yeyu-api\deploy\compose.production.yml' config
+bash.exe 'E:\AI_projects\yeyu-api\deploy\scripts\preflight.sh' --help
+docker compose -p yeyu-api -f 'E:\AI_projects\yeyu-api\deploy\compose.production.yml' config
+git -C 'E:\AI_projects\yeyu-api' diff -- 'E:\AI_projects\yeyu-api\deploy'
 git -C 'E:\AI_projects\yeyu-api' diff --check
 ```
 
@@ -618,7 +689,8 @@ git -C 'E:\AI_projects\yeyu-api' diff --check
 - [ ] **Step 5: 提交部署包**
 
 ```powershell
-git -C 'E:\AI_projects\yeyu-api' add --all
+git -C 'E:\AI_projects\yeyu-api' status --short --branch
+# 仅对本 Task Files/Test 列出的完整路径逐项执行 git -C 'E:\AI_projects\yeyu-api' add --；禁止暂存无关改动。
 git -C 'E:\AI_projects\yeyu-api' commit -m "ops: add isolated deployment and rollback package"
 ```
 
@@ -631,7 +703,7 @@ git -C 'E:\AI_projects\yeyu-api' commit -m "ops: add isolated deployment and rol
 ```powershell
 conda run -n yeyu-api python -m pytest 'E:\AI_projects\yeyu-api\backend\tests' -q
 pnpm --dir 'E:\AI_projects\yeyu-api\frontend' run build
-pnpm --dir 'E:\AI_projects\yeyu-api\frontend' exec playwright test --project=chromium
+pnpm --dir 'E:\AI_projects\yeyu-api\frontend' exec playwright test --project=chromium --project=mobile-chromium
 git -C 'E:\AI_projects\yeyu-api' diff --check
 git -C 'E:\AI_projects\yeyu-api' status --short --branch
 ```
