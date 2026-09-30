@@ -31,9 +31,9 @@ updates:
       python-packages:
         patterns:
           - "*"
-  # bun
-  - package-ecosystem: bun
-    directory: /
+  # pnpm frontend (Dependabot uses the npm ecosystem for package.json/pnpm-lock.yaml)
+  - package-ecosystem: npm
+    directory: /frontend
     schedule:
       interval: "monthly"
     cooldown:
@@ -44,7 +44,7 @@ updates:
     ignore:
       - dependency-name: "@hey-api/openapi-ts"
     groups:
-      npm-packages:
+      frontend-packages:
         patterns:
           - "*"
   # Docker

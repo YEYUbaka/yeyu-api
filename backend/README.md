@@ -133,7 +133,7 @@ The rendered HTML in `./backend/app/email-templates/` is generated from those co
 To preview the emails while editing them, start the dev server from the root of the project:
 
 ```console
-$ bun run email:dev
+$ pnpm --dir packages/react-email run dev
 ```
 
 Values coming from the backend are declared as Jinja placeholders in the component props, for example `username = "{{ username }}"`. The context for each email is built in `generate_*_email()` in `./backend/app/utils.py`, so a new placeholder needs to be added there too.
@@ -141,5 +141,5 @@ Values coming from the backend are declared as Jinja placeholders in the compone
 Once you are done, regenerate the templates used by the application:
 
 ```console
-$ bun run email:export
+$ pnpm --dir packages/react-email run export
 ```

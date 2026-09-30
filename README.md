@@ -20,48 +20,19 @@ Yeyu API 是独立的公益 API 聚合平台。本仓库当前处于 Task 1 框�
   - 🤖 An automatically generated frontend client.
   - 🧪 [Playwright](https://playwright.dev) for end-to-end testing.
   - 🦇 Dark mode support.
-- ☁️ [FastAPI Cloud](https://fastapicloud.com) for deployment.
-- 🐋 [Docker Compose](https://www.docker.com) for local services and self-hosted deployment.
-  - 📞 [Traefik](https://traefik.io) as a reverse proxy with automatic HTTPS.
+- 🐋 [Docker Compose](https://www.docker.com) for local development and integration services.
+  - 📞 [Traefik](https://traefik.io) as a local reverse proxy.
 - 🔒 Secure password hashing by default.
 - 🔑 JWT (JSON Web Token) authentication.
 - 📫 Email-based password recovery.
 - ✉️ [React Email](https://react.email) for email templates.
 - 📬 [Mailpit](https://mailpit.axllent.org) for local email testing during development.
 - ✅ Tests with [Pytest](https://pytest.org).
-- 🏭 CI (continuous integration) and CD (continuous deployment) based on GitHub Actions.
-
-### Dashboard Login
-
-![Dashboard login screenshot](img/login.png)
-
-### Dashboard - Admin
-
-![Admin dashboard screenshot](img/dashboard.png)
-
-### Dashboard - Items
-
-![Items dashboard screenshot](img/dashboard-items.png)
-
-### Dashboard - Dark Mode
-
-![Dark mode dashboard screenshot](img/dashboard-dark.png)
-
-### React Email Templates
-
-![Email templates screenshot](img/react-email.png)
-
-### Mailpit - Local Email Testing
-
-![Mailpit screenshot](img/mailpit.png)
-
-### Interactive API Documentation
-
-![API docs](img/docs.png)
+- 🏭 CI (continuous integration) based on GitHub Actions.
 
 ## Local Baseline
 
-使用项目独立的 conda 环境和 pnpm 入口，不使用 conda base、Windows Store Python 或 Bun 作为 Task 1 的前端测试入口。
+使用项目独立的 conda 环境和 pnpm 入口，不使用 conda base 或 Windows Store Python。
 
 ```powershell
 conda run -n yeyu-api python -m pytest E:\AI_projects\yeyu-api\backend\tests -q
@@ -79,21 +50,11 @@ Backend docs: [backend/README.md](./backend/README.md).
 
 Frontend docs: [frontend/README.md](./frontend/README.md).
 
-## Deployment
-
-FastAPI Cloud deployment: [deployment.md](./deployment.md).
-
-Self-hosted deployment with Docker Compose: [deployment-docker-compose.md](./deployment-docker-compose.md).
-
 ## Development
 
 General development docs: [development.md](./development.md).
 
 This includes the local FastAPI and Vite workflow, Docker Compose services, `.env` configuration, and more.
-
-## Release Notes
-
-Check the file [release-notes.md](./release-notes.md).
 
 ## License
 

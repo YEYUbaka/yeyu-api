@@ -1,19 +1,20 @@
-FROM oven/bun:1 AS frontend-build
+FROM node:24.18.0-bookworm-slim AS frontend-build
 
 WORKDIR /app
 
-COPY package.json bun.lock /app/
-COPY frontend/package.json /app/frontend/
+RUN corepack enable && corepack prepare pnpm@10.28.2 --activate
+
+COPY frontend/package.json frontend/pnpm-lock.yaml /app/frontend/
 
 WORKDIR /app/frontend
 
-RUN bun install
+RUN pnpm install --frozen-lockfile
 
 COPY ./frontend /app/frontend
 
 ARG VITE_API_URL=
 
-RUN bun run build
+RUN pnpm run build
 
 
 FROM python:3.14

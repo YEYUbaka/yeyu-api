@@ -15,7 +15,7 @@
 - [ ] `E:\AI_projects\yeyu-api\frontend` 尚未存在。
 - [ ] `E:\AI_projects\yeyu-api\compose.yml` 尚未存在。
 - [ ] `E:\AI_projects\yeyu-api\uv.lock` 尚未存在。
-- [ ] Python、pnpm 依赖锁定文件尚未生成。
+- [x] Python `uv.lock` 已保留；由同一模板 SHA 导出的 runtime/dev hash lock 已生成。
 
 ## 固定来源与约束
 
@@ -35,4 +35,16 @@
 
 ## 完成状态
 
-本文件将在导入、依赖锁定和基线验证后补充最终状态、实际命令输出摘要、未验证项与 concerns。健康检查、构建成功不等同于产品验收；Docker 不可用时必须单独标记为未验证。
+记录时间：2026-09-30（Task 1 修复轮次）
+
+- [x] 模板代码已按固定 SHA 导入；项目已有 `AGENTS.md`、设计文档、`plans`、`.gitignore` 未覆盖。
+- [x] `frontend\pnpm-lock.yaml` 已使用 pnpm `10.28.2` 生成；Node 版本固定为 `24.18.0`。
+- [x] Dockerfile、Playwright、根/前端脚本、pre-commit、CI 和开发文档已迁移为 pnpm 入口；baseline CI push 分支统一为 `main`。
+- [x] 新导入但不属于 Task 1 的 FastAPI Cloud、自托管 runner、发布/项目自动化和模板截图资产已删除；React Email 源文件保留。
+- [x] `pnpm --version` 输出 `10.28.2`；`node --version` 输出 `v24.18.0`；前端 `pnpm install` 退出码为 0。
+- [x] 前端 `pnpm exec playwright --version` 退出码为 0，输出 `Version 1.62.1`。
+- [ ] 前端 `pnpm run build` 已执行但退出码为 1：本机 `@swc/core` 原生绑定加载失败并报告 Windows SWC 缓存 DACL 校验错误，不能记为通过。
+- [ ] conda 环境 `yeyu-api` 可启动 Python `3.14.7`，但 `conda run --no-capture-output -n yeyu-api python -m pytest --version` 退出码为 1（`No module named pytest`）；本轮按用户要求未继续安装或等待，因此 pytest 未运行。
+- [ ] Docker Compose 未验证：本机 Docker 不可用；未安装 Docker、未触碰服务器或线上服务。
+
+健康检查、构建成功不等同于产品验收；上述未验证项必须在依赖安装和 Docker 可用后单独复核。
