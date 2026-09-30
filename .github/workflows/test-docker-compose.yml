@@ -18,6 +18,32 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Configure temporary test environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          ci_postgres_password="$(openssl rand -hex 32)"
+          ci_secret_key="$(openssl rand -hex 32)"
+          ci_superuser_password="$(openssl rand -hex 32)"
+          {
+            printf 'POSTGRES_PASSWORD=%s\n' "$ci_postgres_password"
+            printf 'PROJECT_NAME=Yeyu API CI\n'
+            printf 'SECRET_KEY=%s\n' "$ci_secret_key"
+            printf 'FIRST_SUPERUSER=ci-admin@example.test\n'
+            printf 'FIRST_SUPERUSER_PASSWORD=%s\n' "$ci_superuser_password"
+            printf 'EMAILS_FROM_EMAIL=ci-admin@example.test\n'
+            printf 'SMTP_HOST=localhost\n'
+            printf 'SMTP_PORT=1025\n'
+            printf 'SMTP_TLS=false\n'
+            printf 'SMTP_USER=\n'
+            printf 'SMTP_PASSWORD=\n'
+            printf 'DOMAIN=localhost\n'
+            printf 'DATABASE_URL=postgresql://postgres:%s@localhost:5432/app\n' "$ci_postgres_password"
+            printf 'VITE_API_URL=http://localhost:8000\n'
+            printf 'MAILPIT_HOST=http://localhost:8025\n'
+            printf 'SENTRY_DSN=\n'
+            printf 'CI=true\n'
+          } >> "$GITHUB_ENV"
       - run: docker compose build
       - run: docker compose down -v --remove-orphans
       - run: docker compose run --rm backend bash scripts/prestart.sh

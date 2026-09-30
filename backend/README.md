@@ -3,7 +3,8 @@
 ## Requirements
 
 * [Docker](https://www.docker.com/).
-* [uv](https://docs.astral.sh/uv/) for Python package and environment management.
+* A project conda environment named `yeyu-api` with Python 3.14.
+* The root `uv.lock` is the dependency lock/source record; `requirements-dev.lock.txt` is the hash-locked backend install export.
 
 ## Local Development
 
@@ -15,19 +16,20 @@ From the project root, start PostgreSQL and Mailpit:
 $ docker compose up -d db mailpit
 ```
 
-Then, from `./backend/`, install the dependencies, prepare the database, and start the development server:
+Then, from `./backend/`, activate the conda environment, install the locked dependencies, prepare the database, and start the development server:
 
 ```console
-$ uv sync
-$ uv run bash scripts/prestart.sh
-$ uv run fastapi dev
+$ conda activate yeyu-api
+$ python -m pip install --require-hashes --requirement requirements-dev.lock.txt
+$ bash scripts/prestart.sh
+$ python -m fastapi dev
 ```
 
 The API is available at `http://localhost:8000`, with automatic interactive docs at `http://localhost:8000/docs`.
 
 ## General Workflow
 
-Run backend commands from `./backend/` with `uv run`. Make sure your editor uses the Python interpreter at `.venv/bin/python` in the project root.
+Run backend commands from `./backend/` after `conda activate yeyu-api`. Configure your editor to use the Python interpreter from that conda environment.
 
 Modify or add SQLModel models for data and SQL tables in `./backend/app/models.py`, API endpoints in `./backend/app/api/`, CRUD (Create, Read, Update, Delete) utils in `./backend/app/crud.py`.
 
@@ -63,7 +65,8 @@ $ docker compose exec backend bash
 To test the backend from the `backend` directory, run:
 
 ```console
-$ uv run bash scripts/test.sh
+$ conda activate yeyu-api
+$ bash scripts/test.sh
 ```
 
 The tests run with Pytest. Modify existing tests or add new ones in `./backend/tests/`.
@@ -92,14 +95,15 @@ When the tests run, they generate `htmlcov/index.html`. Open it in your browser 
 
 ## Migrations
 
-Make sure you create a revision of your models and upgrade the database with that revision every time you change them. From the `backend` directory, use `uv` to run Alembic against the PostgreSQL container:
+Make sure you create a revision of your models and upgrade the database with that revision every time you change them. From the `backend` directory, use the active `yeyu-api` conda environment to run Alembic against the PostgreSQL container:
 
 * Alembic is already configured to import your SQLModel models from `./backend/app/models.py`.
 
 * After changing a model (for example, adding a column), create a revision:
 
 ```console
-$ uv run alembic revision --autogenerate -m "Add column last_name to User model"
+$ conda activate yeyu-api
+$ python -m alembic revision --autogenerate -m "Add column last_name to User model"
 ```
 
 * Commit to the git repository the files generated in the alembic directory.
@@ -107,7 +111,8 @@ $ uv run alembic revision --autogenerate -m "Add column last_name to User model"
 * After creating the revision, run the migration in the database (this is what will actually change the database):
 
 ```console
-$ uv run alembic upgrade head
+$ conda activate yeyu-api
+$ python -m alembic upgrade head
 ```
 
 If you don't want to use migrations at all, uncomment the lines in the file at `./backend/app/core/db.py` that end in:

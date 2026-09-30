@@ -18,7 +18,15 @@ pnpm --dir frontend run dev
 
 Then open <http://localhost:5173/> in your browser.
 
-Run `uv run bash scripts/prestart.sh` and `uv run fastapi dev` from the `backend` directory, with PostgreSQL running in Docker Compose. See [../development.md](../development.md) for the complete setup.
+With PostgreSQL running in Docker Compose, activate the `yeyu-api` conda environment and run the backend from the `backend` directory:
+
+~~~bash
+conda activate yeyu-api
+bash scripts/prestart.sh
+python -m fastapi dev
+~~~
+
+See [../development.md](../development.md) for the complete setup.
 
 To serve the frontend with FastAPI, run `pnpm run build` from the `frontend` directory and open `http://localhost:8000`.
 
