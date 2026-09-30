@@ -16,6 +16,7 @@ import { routeTree } from "./routeTree.gen"
 
 client.setConfig({
   baseURL: import.meta.env.VITE_API_URL ?? "",
+  withCredentials: true,
   auth: () => localStorage.getItem("access_token") || "",
 })
 
@@ -25,6 +26,7 @@ const handleApiError = (error: Error) => {
     [401, 403].includes(error.response?.status ?? 0)
   ) {
     localStorage.removeItem("access_token")
+    localStorage.removeItem("session_authenticated")
     window.location.href = "/login"
   }
 }

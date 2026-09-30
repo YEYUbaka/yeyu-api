@@ -1,7 +1,7 @@
 from datetime import timedelta
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -16,12 +16,16 @@ from app.services.github_oauth import (
     InvalidOAuthState,
     OAuthConfigurationError,
     OAuthError,
+    OAuthProviderError,
 )
 from app.services.identity import (
     EmailVerificationService,
     IdentityConflict,
     InvalidVerificationToken,
     PasswordResetService,
+    RateLimitExceeded,
+    RateLimitUnavailable,
+    RedisRateLimiter,
     UnverifiedOAuthEmail,
 )
 from app.utils import (
@@ -31,6 +35,34 @@ from app.utils import (
 )
 
 router = APIRouter(tags=["login"])
+
+
+def _enforce_identity_limit(
+    request: Request,
+    *,
+    scope: str,
+    subject: str = "",
+    limit: int | None = None,
+) -> None:
+    host = request.client.host if request.client else "unknown"
+    try:
+        RedisRateLimiter().check(
+            scope=scope,
+            identifier=f"{host}:{subject}",
+            limit=limit or settings.IDENTITY_RATE_LIMIT_PER_MINUTE,
+            window_seconds=60,
+        )
+    except RateLimitExceeded as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many identity requests",
+            headers={"Retry-After": "60"},
+        ) from exc
+    except RateLimitUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Identity service temporarily unavailable",
+        ) from exc
 
 
 @router.post("/login/access-token")
@@ -78,9 +110,14 @@ def _request_password_reset(*, session: Any, email: str) -> Message:
     status_code=status.HTTP_202_ACCEPTED,
 )
 def request_password_reset(
-    *, session: SessionDep, body: EmailAddressRequest
+    request: Request, *, session: SessionDep, body: EmailAddressRequest
 ) -> Message:
     """Request a reset link without disclosing whether the email exists."""
+    _enforce_identity_limit(
+        request,
+        scope="password-reset",
+        subject=str(body.email).casefold(),
+    )
     return _request_password_reset(session=session, email=str(body.email))
 
 
@@ -90,12 +127,28 @@ def request_password_reset(
     status_code=status.HTTP_202_ACCEPTED,
 )
 def request_email_verification(
-    *, session: SessionDep, body: EmailAddressRequest
+    request: Request, *, session: SessionDep, body: EmailAddressRequest
 ) -> Message:
+    _enforce_identity_limit(
+        request,
+        scope="email-verification",
+        subject=str(body.email).casefold(),
+    )
     user = crud.get_user_by_email(session=session, email=str(body.email))
     if user is not None and user.is_active and not user.email_verified:
         EmailVerificationService(session=session).request(user.id)
     return Message(message="If that email is registered, we sent a verification link")
+
+
+@router.post("/auth/logout", response_model=Message)
+def logout(response: Response) -> Message:
+    response.delete_cookie(
+        settings.AUTH_COOKIE_NAME,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+    )
+    return Message(message="Logged out successfully")
 
 
 @router.get("/auth/verify-email", response_model=Message)
@@ -113,9 +166,14 @@ def verify_email(
 
 @router.get("/auth/github", response_class=RedirectResponse)
 def github_login(request: Request, session: SessionDep) -> RedirectResponse:
+    _enforce_identity_limit(
+        request,
+        scope="github-login",
+        limit=settings.IDENTITY_OAUTH_RATE_LIMIT_PER_MINUTE,
+    )
     try:
         return GitHubOAuthService(session=session).start(request)
-    except OAuthConfigurationError as exc:
+    except (OAuthConfigurationError, OAuthProviderError) as exc:
         raise HTTPException(status_code=503, detail="GitHub login is unavailable") from exc
 
 
@@ -135,10 +193,15 @@ def github_callback(request: Request, session: SessionDep) -> RedirectResponse:
 
 
 @router.post("/password-recovery/{email}")
-def recover_password(email: str, session: SessionDep) -> Message:
+def recover_password(request: Request, email: str, session: SessionDep) -> Message:
     """
     Password Recovery
     """
+    _enforce_identity_limit(
+        request,
+        scope="password-reset",
+        subject=email.casefold(),
+    )
     return _request_password_reset(session=session, email=email)
 
 
@@ -157,7 +220,9 @@ def reset_password(session: SessionDep, body: NewPassword) -> Message:
         if not email:
             raise HTTPException(status_code=400, detail="Invalid token") from None
         try:
-            user_id = reset_service.consume_legacy_token(body.token, email)
+            user_id = reset_service.consume_legacy_token(
+                body.token, email, commit=False
+            )
         except InvalidVerificationToken:
             raise HTTPException(status_code=400, detail="Invalid token") from None
     user = session.get(User, user_id)

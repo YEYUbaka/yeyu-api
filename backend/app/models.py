@@ -166,7 +166,7 @@ class EmailVerificationToken(SQLModel, table=True):
     user_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE", index=True
     )
-    token_hash: str = Field(max_length=64, nullable=False, unique=True, index=True)
+    token_hash: str = Field(max_length=64, nullable=False, unique=True)
     expires_at: datetime = Field(
         sa_type=DateTime(timezone=True), nullable=False
     )  # type: ignore
@@ -186,7 +186,7 @@ class PasswordResetToken(SQLModel, table=True):
     user_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE", index=True
     )
-    token_hash: str = Field(max_length=64, nullable=False, unique=True, index=True)
+    token_hash: str = Field(max_length=64, nullable=False, unique=True)
     expires_at: datetime = Field(
         sa_type=DateTime(timezone=True), nullable=False
     )  # type: ignore

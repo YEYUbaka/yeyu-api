@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
 from pydantic import EmailStr, TypeAdapter, ValidationError
+from redis import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
@@ -40,6 +43,62 @@ class UnverifiedOAuthEmail(IdentityError):
 
 class UserNotFound(IdentityError):
     """The requested local account does not exist."""
+
+
+class RateLimitExceeded(IdentityError):
+    """The identity endpoint exceeded its short-window request limit."""
+
+
+class RateLimitUnavailable(IdentityError):
+    """The shared rate-limit store is unavailable; fail closed."""
+
+
+class RedisRateLimiter:
+    """Use one atomic Redis script for short-window identity throttling."""
+
+    _increment_script = (
+        "local count = redis.call('INCR', KEYS[1]); "
+        "if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]); end; "
+        "return count"
+    )
+
+    def __init__(self, client: Redis[str] | Any | None = None) -> None:
+        if client is not None:
+            self.client = client
+            return
+        try:
+            self.client = Redis.from_url(
+                settings.REDIS_URL,
+                socket_connect_timeout=settings.GITHUB_OAUTH_TIMEOUT_SECONDS,
+                socket_timeout=settings.GITHUB_OAUTH_TIMEOUT_SECONDS,
+                decode_responses=True,
+            )
+        except (RedisError, OSError, ValueError) as exc:
+            raise RateLimitUnavailable from exc
+
+    def check(
+        self,
+        *,
+        scope: str,
+        identifier: str,
+        limit: int,
+        window_seconds: int,
+    ) -> None:
+        digest = hashlib.sha256(identifier.encode("utf-8")).hexdigest()
+        key = f"yeyu:identity:rate:{scope}:{digest}"
+        try:
+            count = int(
+                self.client.eval(
+                    self._increment_script,
+                    1,
+                    key,
+                    window_seconds,
+                )
+            )
+        except (RedisError, OSError, TypeError, ValueError) as exc:
+            raise RateLimitUnavailable from exc
+        if count > limit:
+            raise RateLimitExceeded
 
 
 def _now() -> datetime:
@@ -168,33 +227,10 @@ class IdentityService:
             )
             return user, identity
 
-        # A GitHub-only account cannot be used for password login until the
-        # user sets a password in a later account-management flow. The random
-        # hash is never returned or logged.
-        user = User(
-            email=email,
-            hashed_password=security.get_password_hash(
-                security.generate_opaque_token()
-            ),
-            email_verified=True,
-        )
-        identity = OAuthIdentity(
-            user_id=user.id,
-            provider="github",
-            provider_subject=provider_subject,
-            email=email,
-            email_verified=True,
-        )
-        self.session.add(user)
-        self.session.add(identity)
-        try:
-            self.session.commit()
-        except IntegrityError:
-            self.session.rollback()
-            raise IdentityConflict
-        self.session.refresh(user)
-        self.session.refresh(identity)
-        return user, identity
+        # Do not create an unrequested GitHub-only account. The user must
+        # first create and verify the email account, then explicitly bind the
+        # provider identity after re-authentication.
+        raise IdentityConflict
 
 
 class _OpaqueTokenService:
@@ -265,7 +301,6 @@ class _OpaqueTokenService:
         if token is None:
             self.session.rollback()
             raise InvalidVerificationToken
-        self.session.commit()
         return token.user_id
 
 
@@ -316,7 +351,11 @@ class EmailVerificationService(_OpaqueTokenService):
             raise InvalidVerificationToken
         user.email_verified = True
         self.session.add(user)
-        self.session.commit()
+        try:
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
         self.session.refresh(user)
         return user
 
@@ -328,13 +367,13 @@ class EmailVerificationService(_OpaqueTokenService):
         )
         return service.issue_token(user_id)
 
-    def consume_password_reset_token(self, raw_token: str) -> UUID:
+    def consume_password_reset_token(self, raw_token: str, *, commit: bool = False) -> UUID:
         service = PasswordResetService(
             session=self.session,
             mailer=self.mailer,
             now=self.now,
         )
-        return service.consume_token(raw_token)
+        return service.consume_token(raw_token, commit=commit)
 
 
 class PasswordResetService(_OpaqueTokenService):
@@ -366,10 +405,19 @@ class PasswordResetService(_OpaqueTokenService):
             html_content=email_data.html_content,
         )
 
-    def consume_token(self, raw_token: str) -> UUID:
-        return self._consume(raw_token)
+    def consume_token(self, raw_token: str, *, commit: bool = False) -> UUID:
+        user_id = self._consume(raw_token)
+        if commit:
+            try:
+                self.session.commit()
+            except Exception:
+                self.session.rollback()
+                raise
+        return user_id
 
-    def consume_legacy_token(self, raw_token: str, email: str) -> UUID:
+    def consume_legacy_token(
+        self, raw_token: str, email: str, *, commit: bool = False
+    ) -> UUID:
         """Consume one pre-Task-2 JWT while migrating existing reset links.
 
         The JWT is verified by the caller. This method records only its hash,
@@ -377,7 +425,9 @@ class PasswordResetService(_OpaqueTokenService):
         """
         if not raw_token:
             raise InvalidVerificationToken
-        user = self.session.exec(select(User).where(User.email == email)).first()
+        user = self.session.exec(
+            select(User).where(func.lower(User.email) == _email_key(email))
+        ).first()
         if user is None:
             raise InvalidVerificationToken
         token_hash = security.hash_opaque_token(raw_token, purpose=self.purpose)
@@ -397,7 +447,8 @@ class PasswordResetService(_OpaqueTokenService):
         )
         self.session.add(token)
         try:
-            self.session.commit()
+            if commit:
+                self.session.commit()
         except IntegrityError as exc:
             self.session.rollback()
             raise InvalidVerificationToken from exc

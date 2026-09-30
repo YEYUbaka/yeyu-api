@@ -27,10 +27,39 @@ from app.models import (
 )
 from app.schemas.identity import GitHubLinkRequest
 from app.services.github_oauth import GitHubOAuthService, OAuthConfigurationError
-from app.services.identity import EmailVerificationService
+from app.services.identity import (
+    EmailVerificationService,
+    RateLimitExceeded,
+    RateLimitUnavailable,
+    RedisRateLimiter,
+)
 from app.utils import generate_new_account_email, send_email
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+def _enforce_user_identity_limit(
+    request: Request, *, scope: str, subject: str
+) -> None:
+    host = request.client.host if request.client else "unknown"
+    try:
+        RedisRateLimiter().check(
+            scope=scope,
+            identifier=f"{host}:{subject}",
+            limit=settings.IDENTITY_RATE_LIMIT_PER_MINUTE,
+            window_seconds=60,
+        )
+    except RateLimitExceeded as exc:
+        raise HTTPException(
+            status_code=429,
+            detail="Too many identity requests",
+            headers={"Retry-After": "60"},
+        ) from exc
+    except RateLimitUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Identity service temporarily unavailable",
+        ) from exc
 
 
 @router.get(
@@ -113,8 +142,13 @@ def update_user_me(
 
 @router.post("/me/email-verification", response_model=Message, status_code=202)
 def request_my_email_verification(
-    *, session: SessionDep, current_user: CurrentUser
+    request: Request, *, session: SessionDep, current_user: CurrentUser
 ) -> Message:
+    _enforce_user_identity_limit(
+        request,
+        scope="email-verification",
+        subject=str(current_user.id),
+    )
     if not current_user.email_verified:
         EmailVerificationService(session=session).request(current_user.id)
     return Message(message="If that email is registered, we sent a verification link")
@@ -127,6 +161,11 @@ def start_github_link(
     session: SessionDep,
     current_user: CurrentUser,
 ) -> RedirectResponse:
+    _enforce_user_identity_limit(
+        request,
+        scope="github-link",
+        subject=str(current_user.id),
+    )
     verified, _ = verify_password(body.current_password, current_user.hashed_password)
     if not verified:
         raise HTTPException(status_code=400, detail="Incorrect password")
@@ -248,7 +287,15 @@ def update_user(
                 status_code=409, detail="User with this email already exists"
             )
 
+    email_changed = bool(
+        user_in.email
+        and str(user_in.email).casefold() != str(db_user.email).casefold()
+    )
+    if email_changed:
+        db_user.email_verified = False
     db_user = crud.update_user(session=session, db_user=db_user, user_in=user_in)
+    if email_changed:
+        EmailVerificationService(session=session).request(db_user.id)
     return db_user
 
 

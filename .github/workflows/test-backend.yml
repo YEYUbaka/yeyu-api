@@ -39,8 +39,10 @@ jobs:
             printf 'DOMAIN=localhost\n'
             printf 'DATABASE_URL=postgresql://postgres:%s@localhost:5432/app\n' "$ci_postgres_password"
             printf 'VITE_API_URL=http://localhost:8000\n'
-            printf 'MAILPIT_HOST=http://localhost:8025\n'
-            printf 'SENTRY_DSN=\n'
+          printf 'MAILPIT_HOST=http://localhost:8025\n'
+          printf 'API_PUBLIC_URL=http://localhost:8000\n'
+          printf 'REDIS_URL=redis://redis:6379/0\n'
+          printf 'SENTRY_DSN=\n'
             printf 'CI=true\n'
           } >> "$GITHUB_ENV"
       - name: Set up Python
@@ -52,7 +54,7 @@ jobs:
         with:
           version: "latest-known"
       - run: docker compose down -v --remove-orphans
-      - run: docker compose up -d --wait db mailpit
+      - run: docker compose up -d --wait db redis mailpit
       - name: Migrate DB
         run: uv run bash scripts/prestart.sh
         working-directory: backend

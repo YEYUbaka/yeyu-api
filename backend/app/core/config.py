@@ -69,6 +69,8 @@ class Settings(BaseSettings):
     GITHUB_API_BASE_URL: str = "https://api.github.com"
     GITHUB_OAUTH_TIMEOUT_SECONDS: float = 10.0
     AUTH_COOKIE_NAME: str = "yeyu_session"
+    IDENTITY_RATE_LIMIT_PER_MINUTE: int = 5
+    IDENTITY_OAUTH_RATE_LIMIT_PER_MINUTE: int = 10
 
     @computed_field  # type: ignore[prop-decorator]
     @property

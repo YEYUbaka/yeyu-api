@@ -32,6 +32,9 @@ def upgrade() -> None:
         existing_type=sa.Boolean(),
         server_default=None,
     )
+    op.create_index(
+        "ix_user_email_verified", "user", ["email_verified"], unique=False
+    )
 
     op.create_table(
         "oauth_identity",
@@ -78,15 +81,37 @@ def upgrade() -> None:
         op.create_index(
             f"ix_{table_name}_user_id", table_name, ["user_id"], unique=False
         )
-        op.create_index(
-            f"ix_{table_name}_token_hash", table_name, ["token_hash"], unique=False
-        )
 
 
 def downgrade() -> None:
-    # Drop child tables first so their foreign keys never require deleting
-    # rows from the existing user table.
+    connection = op.get_bind()
+    for table_name in (
+        "oauth_identity",
+        "email_verification_token",
+        "password_reset_token",
+    ):
+        table = sa.table(table_name)
+        count = connection.execute(
+            sa.select(sa.func.count()).select_from(table)
+        ).scalar_one()
+        if count:
+            raise RuntimeError(
+                f"Refusing identity migration downgrade: {table_name} contains data"
+            )
+    user_table = sa.table("user", sa.column("email_verified", sa.Boolean()))
+    verified_count = connection.execute(
+        sa.select(sa.func.count())
+        .select_from(user_table)
+        .where(user_table.c.email_verified.is_(True))
+    ).scalar_one()
+    if verified_count:
+        raise RuntimeError(
+            "Refusing identity migration downgrade: verified email state exists"
+        )
+
+    # Drop child tables only after the data-loss guard has passed.
     op.drop_table("password_reset_token")
     op.drop_table("email_verification_token")
     op.drop_table("oauth_identity")
+    op.drop_index("ix_user_email_verified", table_name="user")
     op.drop_column("user", "email_verified")

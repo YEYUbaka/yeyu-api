@@ -8,11 +8,15 @@ import {
   type UserRegister,
   UsersService,
 } from "@/client"
+import { client } from "@/client/client.gen"
 import { handleError } from "@/utils"
 import useCustomToast from "./useCustomToast"
 
 const isLoggedIn = () => {
-  return localStorage.getItem("access_token") !== null
+  return (
+    localStorage.getItem("access_token") !== null ||
+    localStorage.getItem("session_authenticated") === "1"
+  )
 }
 
 const useAuth = () => {
@@ -54,8 +58,14 @@ const useAuth = () => {
   })
 
   const logout = () => {
-    localStorage.removeItem("access_token")
-    navigate({ to: "/login" })
+    void client
+      .post({ url: "/api/v1/auth/logout", throwOnError: true })
+      .finally(() => {
+        localStorage.removeItem("access_token")
+        localStorage.removeItem("session_authenticated")
+        queryClient.removeQueries({ queryKey: ["currentUser"] })
+        navigate({ to: "/login" })
+      })
   }
 
   return {

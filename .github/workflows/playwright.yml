@@ -77,6 +77,8 @@ jobs:
           printf 'DATABASE_URL=postgresql://postgres:%s@localhost:5432/app\n' "$ci_postgres_password"
           printf 'VITE_API_URL=http://localhost:8000\n'
           printf 'MAILPIT_HOST=http://localhost:8025\n'
+          printf 'API_PUBLIC_URL=http://localhost:8000\n'
+          printf 'REDIS_URL=redis://redis:6379/0\n'
           printf 'SENTRY_DSN=\n'
           printf 'CI=true\n'
         } >> "$GITHUB_ENV"

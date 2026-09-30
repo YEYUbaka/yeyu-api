@@ -12,9 +12,11 @@ import pytest
 from sqlmodel import Session, SQLModel, create_engine, select
 from starlette.requests import Request
 
+from app import crud
 from app.core.security import get_password_hash
 from app.models import (
     EmailVerificationToken,
+    OAuthIdentity,
     PasswordResetToken,
     User,
 )
@@ -23,6 +25,7 @@ from app.services.identity import (
     EmailVerificationService,
     IdentityConflict,
     InvalidVerificationToken,
+    PasswordResetService,
     UnverifiedOAuthEmail,
 )
 
@@ -192,6 +195,117 @@ def test_github_link_requires_verified_email_and_never_merges_accounts(
     assert active_binding.user_id == binding_owner.id
 
 
+def test_unknown_github_login_does_not_create_local_account(session: Session) -> None:
+    service = EmailVerificationService(session=session, mailer=Mock())
+    before_users = session.exec(select(User)).all()
+    provider_subject = secrets.token_urlsafe(24)
+    email = f"{secrets.token_hex(12)}@example.com"
+
+    with pytest.raises(IdentityConflict):
+        service.identity.resolve_github_login(
+            provider_subject,
+            email,
+            email_verified=True,
+        )
+
+    assert session.exec(select(User)).all() == before_users
+    assert session.exec(select(OAuthIdentity)).all() == []
+
+
+def test_email_verification_rolls_back_token_when_user_update_fails(
+    monkeypatch: pytest.MonkeyPatch, session: Session
+) -> None:
+    user = _new_user(session)
+    service = EmailVerificationService(session=session, mailer=Mock())
+    raw_token = service.issue_verification_token(user.id)
+    original_commit = session.commit
+    monkeypatch.setattr(session, "commit", Mock(side_effect=RuntimeError("commit failed")))
+
+    with pytest.raises(RuntimeError, match="commit failed"):
+        service.verify(raw_token)
+
+    monkeypatch.setattr(session, "commit", original_commit)
+    assert service.verify(raw_token).email_verified is True
+
+
+def test_password_reset_consume_can_join_user_transaction(session: Session) -> None:
+    service = EmailVerificationService(session=session, mailer=Mock())
+    user = _new_user(session)
+    raw_token = service.issue_password_reset_token(user.id)
+
+    assert service.consume_password_reset_token(raw_token, commit=False) == user.id
+    session.rollback()
+    assert service.consume_password_reset_token(raw_token) == user.id
+
+
+def test_legacy_password_reset_consume_can_join_user_transaction(
+    session: Session,
+) -> None:
+    user = _new_user(session)
+    service = PasswordResetService(session=session, mailer=Mock())
+    raw_token = secrets.token_urlsafe(32)
+
+    assert (
+        service.consume_legacy_token(
+            raw_token, str(user.email), commit=False
+        )
+        == user.id
+    )
+    session.rollback()
+    assert (
+        service.consume_legacy_token(raw_token, str(user.email), commit=True)
+        == user.id
+    )
+
+
+def test_crud_email_lookup_is_case_insensitive(session: Session) -> None:
+    email = f"{secrets.token_hex(12)}@Example.com"
+    user = _new_user(session, email=email)
+
+    assert crud.get_user_by_email(session=session, email=email.upper()) == user
+
+
+def test_identity_rate_limiter_uses_atomic_redis_counter() -> None:
+    from app.services.identity import RateLimitExceeded, RedisRateLimiter
+
+    class FakeRedis:
+        def __init__(self) -> None:
+            self.calls: list[tuple[str, int, str, int]] = []
+            self.result = 1
+
+        def eval(
+            self, script: str, numkeys: int, key: str, window_seconds: int
+        ) -> int:
+            self.calls.append((script, numkeys, key, window_seconds))
+            return self.result
+
+    fake_redis = FakeRedis()
+    limiter = RedisRateLimiter(client=fake_redis)
+    identifier = f"{secrets.token_hex(12)}@example.com"
+
+    limiter.check(
+        scope="password-reset",
+        identifier=identifier,
+        limit=2,
+        window_seconds=60,
+    )
+    script, numkeys, key, window_seconds = fake_redis.calls[0]
+    assert "INCR" in script
+    assert "EXPIRE" in script
+    assert numkeys == 1
+    assert identifier not in key
+    assert window_seconds == 60
+
+    fake_redis.result = 3
+    with pytest.raises(RateLimitExceeded):
+        limiter.check(
+            scope="password-reset",
+            identifier=identifier,
+            limit=2,
+            window_seconds=60,
+        )
+
+
 def test_password_reset_token_is_stored_only_as_hash(session: Session) -> None:
     user = _new_user(session)
     service = EmailVerificationService(session=session, mailer=Mock())
@@ -248,17 +362,11 @@ def test_github_exchange_uses_exact_callback_uri_and_verifier(
     captured: dict[str, object] = {}
     access_token = secrets.token_urlsafe(32)
 
-    class FakeResponse:
-        status_code = 200
-
-        def json(self) -> dict[str, str]:
-            return {"access_token": access_token}
-
     class FakeClient:
-        def post(self, url: str, **kwargs: object) -> FakeResponse:
+        def fetch_token(self, url: str, **kwargs: object) -> dict[str, str]:
             captured["url"] = url
             captured["kwargs"] = kwargs
-            return FakeResponse()
+            return {"access_token": access_token}
 
         def close(self) -> None:
             return None
@@ -270,7 +378,7 @@ def test_github_exchange_uses_exact_callback_uri_and_verifier(
     code_verifier = secrets.token_urlsafe(32)
     assert service.exchange_code(secrets.token_urlsafe(16), code_verifier) == access_token
 
-    data = captured["kwargs"]["data"]  # type: ignore[index]
+    data = captured["kwargs"]
     assert data["redirect_uri"] == callback_uri
     assert data["code_verifier"] == code_verifier
 
@@ -290,6 +398,8 @@ def test_github_callback_consumes_state_once_and_does_not_persist_access_token(
     )
     state_store = FakeStateStore()
     state = secrets.token_urlsafe(24)
+    github_email = f"{secrets.token_hex(12)}@example.com"
+    _new_user(session, email=github_email, email_verified=True)
     state_store.put(
         state,
         {
@@ -305,7 +415,7 @@ def test_github_callback_consumes_state_once_and_does_not_persist_access_token(
     service.fetch_identity = Mock(
         return_value={
             "provider_subject": secrets.token_urlsafe(16),
-            "email": f"{secrets.token_hex(12)}@example.com",
+            "email": github_email,
             "email_verified": True,
         }
     )

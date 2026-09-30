@@ -4,10 +4,14 @@ import {
   Link as RouterLink,
   redirect,
 } from "@tanstack/react-router"
+import { useEffect, useState } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 
-import type { Body_login_login_access_token as AccessToken } from "@/client"
+import {
+  type Body_login_login_access_token as AccessToken,
+  UsersService,
+} from "@/client"
 import { AuthLayout } from "@/components/Common/AuthLayout"
 import {
   Form,
@@ -32,10 +36,15 @@ const formSchema = z.object({
 
 type FormData = z.infer<typeof formSchema>
 
+const searchSchema = z.object({
+  oauth: z.enum(["github"]).optional(),
+})
+
 export const Route = createFileRoute("/login")({
   component: Login,
-  beforeLoad: async () => {
-    if (isLoggedIn()) {
+  validateSearch: searchSchema,
+  beforeLoad: async ({ search }) => {
+    if (isLoggedIn() && search.oauth !== "github") {
       throw redirect({
         to: "/",
       })
@@ -52,6 +61,22 @@ export const Route = createFileRoute("/login")({
 
 function Login() {
   const { loginMutation } = useAuth()
+  const navigate = Route.useNavigate()
+  const search = Route.useSearch()
+  const [oauthError, setOauthError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (search.oauth !== "github") return
+    UsersService.readUserMe()
+      .then(() => {
+        localStorage.setItem("session_authenticated", "1")
+        void navigate({ to: "/" })
+      })
+      .catch(() => {
+        localStorage.removeItem("session_authenticated")
+        setOauthError("GitHub 登录未完成，请先验证邮箱后再绑定 GitHub。")
+      })
+  }, [navigate, search.oauth])
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
     mode: "onBlur",
@@ -127,6 +152,15 @@ function Login() {
             <LoadingButton type="submit" loading={loginMutation.isPending}>
               Log In
             </LoadingButton>
+            <a
+              className="text-center text-sm underline underline-offset-4"
+              href={`${import.meta.env.VITE_API_URL ?? ""}/api/v1/auth/github`}
+            >
+              Continue with GitHub
+            </a>
+            {oauthError ? (
+              <p className="text-center text-sm text-destructive">{oauthError}</p>
+            ) : null}
           </div>
 
           <div className="text-center text-sm">
