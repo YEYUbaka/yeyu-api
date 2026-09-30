@@ -25,6 +25,9 @@ jobs:
           ci_postgres_password="$(openssl rand -hex 32)"
           ci_secret_key="$(openssl rand -hex 32)"
           ci_superuser_password="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$ci_postgres_password"
+          printf '::add-mask::%s\n' "$ci_secret_key"
+          printf '::add-mask::%s\n' "$ci_superuser_password"
           {
             printf 'POSTGRES_PASSWORD=%s\n' "$ci_postgres_password"
             printf 'PROJECT_NAME=Yeyu API CI\n'

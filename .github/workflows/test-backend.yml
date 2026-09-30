@@ -17,6 +17,14 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version-file: .python-version
+      - name: Install uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          version: "latest-known"
       - name: Configure temporary test environment
         shell: bash
         run: |
@@ -24,6 +32,9 @@ jobs:
           ci_postgres_password="$(openssl rand -hex 32)"
           ci_secret_key="$(openssl rand -hex 32)"
           ci_superuser_password="$(openssl rand -hex 32)"
+          printf '::add-mask::%s\n' "$ci_postgres_password"
+          printf '::add-mask::%s\n' "$ci_secret_key"
+          printf '::add-mask::%s\n' "$ci_superuser_password"
           {
             printf 'POSTGRES_PASSWORD=%s\n' "$ci_postgres_password"
             printf 'PROJECT_NAME=Yeyu API CI\n'
@@ -39,20 +50,12 @@ jobs:
             printf 'DOMAIN=localhost\n'
             printf 'DATABASE_URL=postgresql://postgres:%s@localhost:5432/app\n' "$ci_postgres_password"
             printf 'VITE_API_URL=http://localhost:8000\n'
-          printf 'MAILPIT_HOST=http://localhost:8025\n'
-          printf 'API_PUBLIC_URL=http://localhost:8000\n'
-          printf 'REDIS_URL=redis://redis:6379/0\n'
-          printf 'SENTRY_DSN=\n'
+            printf 'MAILPIT_HOST=http://localhost:8025\n'
+            printf 'API_PUBLIC_URL=http://localhost:8000\n'
+            printf 'REDIS_URL=redis://redis:6379/0\n'
+            printf 'SENTRY_DSN=\n'
             printf 'CI=true\n'
           } >> "$GITHUB_ENV"
-      - name: Set up Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
-        with:
-          python-version-file: .python-version
-      - name: Install uv
-        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
-        with:
-          version: "latest-known"
       - run: docker compose down -v --remove-orphans
       - run: docker compose up -d --wait db redis mailpit
       - name: Migrate DB
