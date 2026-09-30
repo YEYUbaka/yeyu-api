@@ -39,9 +39,9 @@ jobs:
             printf 'POSTGRES_PASSWORD=%s\n' "$ci_postgres_password"
             printf 'PROJECT_NAME=Yeyu API CI\n'
             printf 'SECRET_KEY=%s\n' "$ci_secret_key"
-            printf 'FIRST_SUPERUSER=ci-admin@example.test\n'
+            printf 'FIRST_SUPERUSER=ci-admin@example.com\n'
             printf 'FIRST_SUPERUSER_PASSWORD=%s\n' "$ci_superuser_password"
-            printf 'EMAILS_FROM_EMAIL=ci-admin@example.test\n'
+            printf 'EMAILS_FROM_EMAIL=ci-admin@example.com\n'
             printf 'SMTP_HOST=localhost\n'
             printf 'SMTP_PORT=1025\n'
             printf 'SMTP_TLS=false\n'
