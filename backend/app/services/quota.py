@@ -60,8 +60,25 @@ class QuotaLease:
     def __enter__(self) -> QuotaLease:
         return self
 
-    def __exit__(self, _exc_type: object, _exc: object, _tb: object) -> None:
-        self.release()
+    def __exit__(
+        self,
+        _exc_type: object,
+        exc: BaseException | None,
+        _tb: object,
+    ) -> bool:
+        try:
+            self.release()
+        except Exception as cleanup_error:
+            if exc is None:
+                raise
+            try:
+                exc.add_note(
+                    "quota lease release failed while preserving the original "
+                    f"{type(exc).__name__}: {type(cleanup_error).__name__}"
+                )
+            except Exception:
+                pass
+        return False
 
 
 def _utc(value: datetime) -> datetime:

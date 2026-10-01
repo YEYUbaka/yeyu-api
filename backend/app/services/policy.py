@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, datetime
+import secrets
+from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address, ip_network
 from typing import Any
+from uuid import UUID
 
 from pydantic import IPvAnyAddress
 from sqlmodel import Session, select
@@ -12,6 +14,7 @@ from app.models import ApiDefinition, ApiPolicy
 from app.schemas.api_keys import ApiKeyPrincipal
 from app.schemas.policy import PolicyDecision, PolicyUpdate, PolicyView
 from app.services.quota import (
+    MINUTE_WINDOW_SECONDS,
     ConcurrencyLimitExceeded,
     QuotaLease,
     QuotaService,
@@ -37,10 +40,17 @@ DEFAULT_IP_MINUTE_LIMIT = 60
 DEFAULT_DAILY_LIMIT = 1000
 DEFAULT_CONCURRENCY_LIMIT = 1
 DEFAULT_WEIGHT = 1
+ADMISSION_TTL_SECONDS = MINUTE_WINDOW_SECONDS
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def _utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 @dataclass(frozen=True)
@@ -50,6 +60,20 @@ class _PolicyLimits:
     daily: int
     concurrency: int
     weight: int
+
+
+@dataclass(frozen=True, slots=True)
+class _PolicyAdmission:
+    token: str = field(repr=False)
+    user_id: UUID
+    api_key_id: UUID
+    api_slug: str
+    client_ip: str
+    concurrency_limit: int
+    expires_at: datetime
+    daily_remaining: int | None
+    minute_remaining: int | None
+    ip_minute_remaining: int | None
 
 
 class PolicyService:
@@ -86,6 +110,7 @@ class PolicyService:
         self._quota_service = (
             QuotaService(session, redis) if redis is not None else None
         )
+        self._admissions: dict[int, _PolicyAdmission] = {}
 
     def _api(self, api_slug: str) -> ApiDefinition:
         api = self.session.exec(
@@ -260,6 +285,9 @@ class PolicyService:
             ip_minute_limit=limits.ip_minute,
         )
         per_limit = rate.remaining_by_limit
+        minute_remaining = (
+            min(per_limit[:2]) if len(per_limit) >= 2 else rate.remaining
+        )
         ip_remaining = (
             per_limit[2] if len(per_limit) >= 3 else rate.remaining
         )
@@ -275,7 +303,7 @@ class PolicyService:
             return self._deny(
                 reason,
                 daily_remaining=daily_remaining,
-                minute_remaining=rate.remaining,
+                minute_remaining=minute_remaining,
                 ip_minute_remaining=ip_remaining,
                 retry_after_seconds=rate.retry_after_seconds,
             )
@@ -292,14 +320,14 @@ class PolicyService:
             return self._deny(
                 "DAILY_QUOTA_EXCEEDED",
                 daily_remaining=daily.remaining,
-                minute_remaining=rate.remaining,
+                minute_remaining=minute_remaining,
                 ip_minute_remaining=ip_remaining,
                 retry_after_seconds=daily.retry_after_seconds,
             )
         return PolicyDecision(
             allowed=True,
             daily_remaining=daily.remaining,
-            minute_remaining=rate.remaining,
+            minute_remaining=minute_remaining,
             ip_minute_remaining=ip_remaining,
             code=static_decision.code,
             reason=static_decision.reason,
@@ -320,7 +348,7 @@ class PolicyService:
         # atomic quota accounting.
         if self.redis is None:
             return static_decision
-        return self._consume_quotas(
+        consumed = self._consume_quotas(
             principal=principal,
             api=api,
             ip=ip,
@@ -328,6 +356,71 @@ class PolicyService:
             limits=limits,
             static_decision=static_decision,
         )
+        if not consumed.allowed:
+            return consumed
+        admission = _PolicyAdmission(
+            token=secrets.token_urlsafe(32),
+            user_id=principal.user_id,
+            api_key_id=principal.api_key_id,
+            api_slug=api.slug,
+            client_ip=str(ip),
+            concurrency_limit=limits.concurrency,
+            expires_at=_utc(now) + timedelta(seconds=ADMISSION_TTL_SECONDS),
+            daily_remaining=consumed.daily_remaining,
+            minute_remaining=consumed.minute_remaining,
+            ip_minute_remaining=consumed.ip_minute_remaining,
+        )
+        self._admissions[id(admission)] = admission
+        consumed._admission = admission
+        return consumed
+
+    def _take_admission(
+        self,
+        *,
+        decision: PolicyDecision | None,
+        principal: ApiKeyPrincipal,
+        api: ApiDefinition,
+        ip: IPvAnyAddress,
+        now: datetime,
+    ) -> _PolicyAdmission:
+        if decision is None:
+            raise PolicyDenied(self._deny("ADMISSION_REQUIRED"))
+        if not decision.allowed:
+            raise PolicyDenied(self._deny("INVALID_ADMISSION"))
+        admission = decision._admission
+        if not isinstance(admission, _PolicyAdmission):
+            raise PolicyDenied(self._deny("INVALID_ADMISSION"))
+        stored = self._admissions.get(id(admission))
+        if stored is None:
+            raise PolicyDenied(self._deny("ADMISSION_REUSED"))
+        if stored is not admission:
+            raise PolicyDenied(self._deny("INVALID_ADMISSION"))
+        current = _utc(now)
+        if current >= admission.expires_at:
+            self._admissions.pop(id(admission), None)
+            raise PolicyDenied(self._deny("ADMISSION_EXPIRED"))
+        if (
+            admission.user_id != principal.user_id
+            or admission.api_key_id != principal.api_key_id
+            or admission.api_slug != api.slug
+            or admission.client_ip != str(ip)
+        ):
+            raise PolicyDenied(self._deny("ADMISSION_CONTEXT_MISMATCH"))
+        self._admissions.pop(id(admission), None)
+        return admission
+
+    @staticmethod
+    def _preserve_original_error(
+        original: BaseException,
+        cleanup_error: BaseException,
+    ) -> None:
+        try:
+            original.add_note(
+                "quota lease cleanup failed while preserving the original "
+                f"{type(original).__name__}: {type(cleanup_error).__name__}"
+            )
+        except Exception:
+            pass
 
     def acquire(
         self,
@@ -338,51 +431,43 @@ class PolicyService:
         *,
         decision: PolicyDecision | None = None,
     ) -> QuotaLease:
-        """Reserve concurrency and quotas; callers must release the lease."""
+        """Acquire only concurrency using a one-time evaluated admission."""
 
-        current = now or _now()
-        static_decision, limits = self._static_evaluate(principal, api, ip)
+        current = _utc(now or _now())
+        admission = self._take_admission(
+            decision=decision,
+            principal=principal,
+            api=api,
+            ip=ip,
+            now=current,
+        )
+        static_decision, _limits = self._static_evaluate(principal, api, ip)
         if not static_decision.allowed:
             raise PolicyDenied(static_decision)
         quota = self._quota()
+        lease: QuotaLease | None = None
         try:
             lease = quota.acquire_concurrency(
                 user_id=principal.user_id,
                 api_key_id=principal.api_key_id,
                 api_slug=api.slug,
-                concurrency_limit=limits.concurrency,
+                concurrency_limit=admission.concurrency_limit,
                 now=current,
             )
         except ConcurrencyLimitExceeded as exc:
             denied = self._deny(
                 "CONCURRENCY_LIMIT",
-                daily_remaining=static_decision.daily_remaining,
-                minute_remaining=static_decision.minute_remaining,
-                ip_minute_remaining=static_decision.ip_minute_remaining,
+                daily_remaining=admission.daily_remaining,
+                minute_remaining=admission.minute_remaining,
+                ip_minute_remaining=admission.ip_minute_remaining,
                 retry_after_seconds=exc.retry_after_seconds,
             )
             raise PolicyDenied(denied) from exc
-
-        if decision is not None:
-            if not decision.allowed:
-                lease.release()
-                raise PolicyDenied(decision)
-            return lease
-
-        try:
-            consumed = self._consume_quotas(
-                principal=principal,
-                api=api,
-                ip=ip,
-                now=current,
-                limits=limits,
-                static_decision=static_decision,
-            )
-            if not consumed.allowed:
-                lease.release()
-                raise PolicyDenied(consumed)
-            return lease
-        except BaseException:
-            if not lease.released:
-                lease.release()
+        except BaseException as exc:
+            if lease is not None and not lease.released:
+                try:
+                    lease.release()
+                except Exception as cleanup_error:
+                    self._preserve_original_error(exc, cleanup_error)
             raise
+        return lease

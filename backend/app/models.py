@@ -348,6 +348,14 @@ class UsageDaily(SQLModel, table=True):
             "api_slug",
             name="uq_usage_daily_dimension",
         ),
+        CheckConstraint(
+            "request_count >= 0",
+            name="ck_usage_daily_request_count_nonnegative",
+        ),
+        CheckConstraint(
+            "weighted_units >= 0",
+            name="ck_usage_daily_weighted_units_nonnegative",
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)

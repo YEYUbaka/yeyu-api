@@ -5,7 +5,7 @@ from ipaddress import ip_network
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, field_validator
 
 
 def _normalize_allowed_ips(value: list[str]) -> list[str]:
@@ -62,6 +62,7 @@ class PolicyDecision(BaseModel):
     daily_remaining: int | None = None
     minute_remaining: int | None = None
     ip_minute_remaining: int | None = None
+    _admission: Any = PrivateAttr(default=None)
 
 
 class PolicyErrorResponse(BaseModel):

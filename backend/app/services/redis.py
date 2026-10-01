@@ -61,13 +61,19 @@ for i, key in ipairs(KEYS) do
     end
 end
 if failed_index ~= 0 then
-    for _, key in ipairs(KEYS) do
+    local remaining_after = {}
+    for index, key in ipairs(KEYS) do
         local left = redis.call('DECRBY', key, 1)
         if left <= 0 then
             redis.call('DEL', key)
         end
+        remaining_after[index] = tonumber(ARGV[index]) - math.max(0, left)
     end
-    return {0, failed_index, failed_current - 1, failed_ttl}
+    local result = {0, failed_index, failed_current - 1, failed_ttl}
+    for i = 1, #KEYS do
+        table.insert(result, remaining_after[i])
+    end
+    return result
 end
 local result = {1, minimum_remaining, 0, 0}
 for i = 1, #KEYS do
@@ -92,7 +98,12 @@ if active >= limit then
     return {0, active, retry}
 end
 redis.call('ZADD', KEYS[1], now + ttl, token)
-redis.call('EXPIRE', KEYS[1], ttl)
+local latest = redis.call('ZREVRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+local key_ttl = ttl
+if #latest >= 2 then
+    key_ttl = math.max(1, math.ceil(tonumber(latest[2]) - now))
+end
+redis.call('EXPIRE', KEYS[1], key_ttl)
 return {1, active + 1, ttl}
 """
 
@@ -175,11 +186,28 @@ return removed
                 raise RedisUnavailable("Redis returned an invalid limit result") from exc
             if not 1 <= failed_index <= len(limits):
                 raise RedisUnavailable("Redis returned an invalid limit scope")
+            try:
+                raw_remaining = values[4:]
+                per_limit = (
+                    tuple(max(0, int(value)) for value in raw_remaining)
+                    if raw_remaining
+                    else ()
+                )
+            except (TypeError, ValueError) as exc:
+                raise RedisUnavailable("Redis returned an invalid limit result") from exc
+            if per_limit and len(per_limit) != len(limits):
+                raise RedisUnavailable("Redis returned incomplete limit remaining")
+            failed_remaining = (
+                per_limit[failed_index - 1]
+                if per_limit
+                else max(0, limits[failed_index - 1] - current)
+            )
             return LimitResult(
                 allowed=False,
-                remaining=max(0, limits[failed_index - 1] - current),
+                remaining=failed_remaining,
                 retry_after_seconds=max(1, ttl),
                 failed_index=failed_index,
+                remaining_by_limit=per_limit,
             )
 
         if status != 1:

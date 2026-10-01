@@ -31,6 +31,14 @@ def upgrade() -> None:
             ["api_key_id"], ["api_key.id"], ondelete="CASCADE"
         ),
         sa.PrimaryKeyConstraint("id"),
+        sa.CheckConstraint(
+            "request_count >= 0",
+            name="ck_usage_daily_request_count_nonnegative",
+        ),
+        sa.CheckConstraint(
+            "weighted_units >= 0",
+            name="ck_usage_daily_weighted_units_nonnegative",
+        ),
         sa.UniqueConstraint(
             "utc_date",
             "user_id",
@@ -72,7 +80,10 @@ def upgrade() -> None:
 
 def _refuse_if_populated(table_name: str) -> None:
     if context.is_offline_mode():
-        return
+        raise RuntimeError(
+            "Refusing usage/cache migration downgrade in offline mode: "
+            f"cannot verify whether {table_name} contains data"
+        )
     connection = op.get_bind()
     table = sa.table(table_name)
     if connection.execute(sa.select(sa.func.count()).select_from(table)).scalar_one():
