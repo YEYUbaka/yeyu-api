@@ -7,7 +7,7 @@ import sys
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -83,6 +83,32 @@ def test_production_rejects_reusing_secret_key_as_api_key_pepper() -> None:
         Settings(**_settings_values(API_KEY_PEPPER="settings-test-secret"))
 
 
+def test_current_api_key_pepper_must_not_be_empty() -> None:
+    from app.core.config import Settings
+
+    with pytest.raises(ValidationError, match="API_KEY_PEPPER must not be empty"):
+        Settings(**_settings_values(API_KEY_PEPPER=" "))
+
+
+def test_default_secret_warns_in_development() -> None:
+    from app.core.config import Settings
+
+    with pytest.warns(UserWarning, match="SECRET_KEY"):
+        Settings(
+            **_settings_values(
+                FASTAPI_ENV="development",
+                SECRET_KEY="changethis",
+            )
+        )
+
+
+def test_default_secret_is_rejected_outside_development() -> None:
+    from app.core.config import Settings
+
+    with pytest.raises(ValidationError, match="SECRET_KEY"):
+        Settings(**_settings_values(SECRET_KEY="changethis"))
+
+
 @pytest.mark.parametrize(
     ("previous_pepper", "previous_version", "current_version"),
     (
@@ -90,6 +116,7 @@ def test_production_rejects_reusing_secret_key_as_api_key_pepper() -> None:
         (None, 1, 2),
         ("old-pepper", 0, 2),
         ("old-pepper", 2, 2),
+        ("", 1, 2),
         (None, None, 0),
     ),
 )
@@ -136,6 +163,82 @@ def test_hash_helper_does_not_fallback_to_secret_key_outside_development(
 
     with pytest.raises(ValueError, match="API_KEY_PEPPER"):
         security.hash_api_key("raw-key", version=settings.API_KEY_PEPPER_VERSION)
+
+
+def test_security_helpers_use_current_and_previous_pepper_versions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.core import security
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "FASTAPI_ENV", "development")
+    monkeypatch.setattr(settings, "SECRET_KEY", "development-fallback-secret")
+    monkeypatch.setattr(settings, "API_KEY_PEPPER", None)
+    monkeypatch.setattr(settings, "API_KEY_PEPPER_VERSION", 2)
+    monkeypatch.setattr(settings, "API_KEY_PREVIOUS_PEPPER", "previous-test-pepper")
+    monkeypatch.setattr(settings, "API_KEY_PREVIOUS_PEPPER_VERSION", 1)
+
+    raw_key = security.generate_api_key()
+    current_hash = security.hash_api_key(raw_key, version=2)
+    previous_hash = security.hash_api_key(raw_key, version=1)
+
+    assert current_hash != previous_hash
+    assert security.api_key_hash_versions() == (2, 1)
+    assert security.verify_api_key_hash(raw_key, previous_hash, version=1)
+
+    with pytest.raises(ValueError, match="Unknown API key hash version"):
+        security.hash_api_key(raw_key, version=99)
+    assert not security.verify_api_key_hash(raw_key, "0" * 64, version=99)
+
+
+@pytest.mark.parametrize(
+    ("overrides", "requested_version", "message"),
+    (
+        ({"API_KEY_PEPPER_VERSION": 0}, 1, "must be positive"),
+        (
+            {"API_KEY_PEPPER_VERSION": 2, "API_KEY_PREVIOUS_PEPPER": "previous"},
+            1,
+            "configured together",
+        ),
+        (
+            {
+                "API_KEY_PEPPER_VERSION": 2,
+                "API_KEY_PREVIOUS_PEPPER": " ",
+                "API_KEY_PREVIOUS_PEPPER_VERSION": 1,
+            },
+            1,
+            "must not be empty",
+        ),
+        (
+            {
+                "API_KEY_PEPPER_VERSION": 2,
+                "API_KEY_PREVIOUS_PEPPER": "previous",
+                "API_KEY_PREVIOUS_PEPPER_VERSION": 2,
+            },
+            1,
+            "positive and distinct",
+        ),
+    ),
+)
+def test_security_hash_rejects_invalid_pepper_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+    overrides: dict[str, object],
+    requested_version: int,
+    message: str,
+) -> None:
+    from app.core import security
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "FASTAPI_ENV", "development")
+    monkeypatch.setattr(settings, "API_KEY_PEPPER", "current-test-pepper")
+    monkeypatch.setattr(settings, "API_KEY_PEPPER_VERSION", 2)
+    monkeypatch.setattr(settings, "API_KEY_PREVIOUS_PEPPER", None)
+    monkeypatch.setattr(settings, "API_KEY_PREVIOUS_PEPPER_VERSION", None)
+    for name, value in overrides.items():
+        monkeypatch.setattr(settings, name, value)
+
+    with pytest.raises(ValueError, match=message):
+        security.hash_api_key("yeyu_fake_key_for_test", version=requested_version)
 
 
 def test_offline_downgrade_emits_database_side_data_loss_guards() -> None:
@@ -199,6 +302,51 @@ def test_create_persists_only_public_prefix_and_hmac_digest(
     assert len(created.secret.encode("utf-8")) >= 32
 
 
+@pytest.mark.parametrize(
+    ("field", "exception_name"),
+    (("is_active", "AccountSuspendedError"), ("email_verified", "AccountUnverifiedError")),
+)
+def test_create_requires_an_active_verified_user(
+    key_session: Session,
+    field: str,
+    exception_name: str,
+) -> None:
+    _api_key_type, user_type, service_type = _require_task4_types()
+    from app.services import api_keys as api_key_service
+
+    user = _verified_user(user_type)
+    setattr(user, field, False)
+    key_session.add(user)
+    key_session.commit()
+    key_session.refresh(user)
+
+    exception_type = getattr(api_key_service, exception_name)
+    with pytest.raises(exception_type):
+        service_type(key_session).create(user.id, "ineligible")
+
+
+def test_create_rejects_an_unknown_user(key_session: Session) -> None:
+    _api_key_type, _user_type, service_type = _require_task4_types()
+    from app.services.api_keys import ApiKeyUserNotFound
+
+    with pytest.raises(ApiKeyUserNotFound):
+        service_type(key_session).create(uuid4(), "unknown-user")
+
+
+def test_created_response_requires_a_persisted_timestamp() -> None:
+    api_key_type, _user_type, service_type = _require_task4_types()
+    record = api_key_type(
+        user_id=uuid4(),
+        prefix="yeyu_fake",
+        key_hash="0" * 64,
+        hash_version=1,
+        created_at=None,
+    )
+
+    with pytest.raises(RuntimeError, match="created_at"):
+        service_type._created_response(record, "yeyu_fake_secret")
+
+
 def test_authenticate_returns_principal_and_distinguishes_revocation(
     key_session: Session,
 ) -> None:
@@ -216,11 +364,17 @@ def test_authenticate_returns_principal_and_distinguishes_revocation(
     assert principal.user_id == user.id
     assert principal.prefix == created.prefix
     assert principal.revoked_at is None
+    assert principal.id == principal.key_id
+    assert principal.api_key_id == principal.key_id
+    assert principal.account_verified
+    assert not principal.account_suspended
+    assert not principal.is_revoked
 
     service.revoke(created.id, user.id)
     revoked = service.authenticate(created.secret)
     assert revoked is not None
     assert revoked.revoked_at is not None
+    assert revoked.is_revoked
     assert key_session.exec(select(api_key_type)).one().revoked_at is not None
 
 
@@ -271,6 +425,31 @@ def test_create_commit_failure_rolls_back_new_key(key_session: Session) -> None:
     assert key_session.exec(select(_api_key_type)).all() == []
 
 
+def test_revoke_commit_failure_rolls_back_revocation(key_session: Session) -> None:
+    _api_key_type, user_type, service_type = _require_task4_types()
+    user = _verified_user(user_type)
+    key_session.add(user)
+    key_session.commit()
+    key_session.refresh(user)
+    service = service_type(key_session)
+    created = service.create(user.id, "failed-revoke")
+
+    original_commit = key_session.commit
+
+    def fail_commit() -> None:
+        raise RuntimeError("simulated revoke commit failure")
+
+    key_session.commit = fail_commit  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="simulated revoke commit failure"):
+        service.revoke(created.id, user.id)
+    key_session.commit = original_commit  # type: ignore[method-assign]
+
+    key_session.rollback()
+    surviving = service.authenticate(created.secret)
+    assert surviving is not None
+    assert surviving.revoked_at is None
+
+
 def test_create_and_rotate_do_not_require_post_commit_refresh(
     key_session: Session,
     monkeypatch: pytest.MonkeyPatch,
@@ -312,6 +491,43 @@ def test_versioned_hmac_does_not_use_plaintext_key_as_storage_value() -> None:
     assert not security.verify_api_key_hash(
         secrets.token_urlsafe(32), digest, version=1
     )
+
+
+def test_authenticate_rejects_empty_tampered_and_orphaned_keys(
+    key_session: Session,
+) -> None:
+    api_key_type, user_type, service_type = _require_task4_types()
+    from app.core import security
+
+    user = _verified_user(user_type)
+    key_session.add(user)
+    key_session.commit()
+    key_session.refresh(user)
+
+    tampered_key = security.generate_api_key()
+    orphaned_key = security.generate_api_key()
+    key_session.add_all(
+        [
+            api_key_type(
+                user_id=user.id,
+                prefix=security.get_api_key_prefix(tampered_key),
+                key_hash="f" * 64,
+                hash_version=1,
+            ),
+            api_key_type(
+                user_id=uuid4(),
+                prefix=security.get_api_key_prefix(orphaned_key),
+                key_hash=security.hash_api_key(orphaned_key, version=1),
+                hash_version=1,
+            ),
+        ]
+    )
+    key_session.commit()
+
+    service = service_type(key_session)
+    assert service.authenticate("") is None
+    assert service.authenticate(tampered_key) is None
+    assert service.authenticate(orphaned_key) is None
 
 
 def test_authenticate_accepts_an_explicit_previous_pepper_version(
@@ -434,3 +650,95 @@ def test_policy_evaluation_fails_closed_for_historical_invalid_allowlist(
 
     assert decision.allowed is False
     assert decision.code == "IP_NOT_ALLOWED"
+
+
+def test_policy_evaluation_handles_defaults_disabled_and_empty_allowlist(
+    key_session: Session,
+) -> None:
+    from app.models import ApiDefinition
+    from app.schemas.api_keys import ApiKeyPrincipal
+    from app.schemas.policy import PolicyUpdate
+    from app.services.policy import PolicyService
+
+    api = ApiDefinition(
+        slug="policy-boundaries",
+        name="Policy boundaries",
+        summary="Policy boundaries",
+        category="tools",
+        method="GET",
+        path="/v1/tools/policy-boundaries",
+        adapter_name="builtin-tools",
+    )
+    key_session.add(api)
+    key_session.commit()
+    key_session.refresh(api)
+    principal = ApiKeyPrincipal(
+        key_id=UUID(int=10),
+        user_id=UUID(int=11),
+        prefix="yeyu_test",
+        hash_version=1,
+    )
+    now = datetime.now(UTC)
+    service = PolicyService(key_session, minute_limit=7, daily_limit=11)
+
+    default_decision = service.evaluate(principal, api, "192.0.2.10", now)
+    assert default_decision.allowed
+    assert default_decision.daily_remaining == 11
+    assert default_decision.minute_remaining == 7
+
+    service.upsert("policy-boundaries", PolicyUpdate(enabled=False))
+    assert service.evaluate(principal, api, "192.0.2.10", now).code == (
+        "POLICY_DISABLED"
+    )
+
+    inactive = principal.model_copy(update={"is_active": False})
+    assert service.evaluate(inactive, api, "192.0.2.10", now).code == (
+        "ACCOUNT_SUSPENDED"
+    )
+
+    service.upsert(
+        "policy-boundaries",
+        PolicyUpdate(
+            enabled=True,
+            allowed_ips=[],
+            minute_limit=5,
+            ip_minute_limit=3,
+            daily_limit=9,
+        ),
+    )
+    allowed = service.evaluate(principal, api, "192.0.2.10", now)
+    assert allowed.allowed
+    assert allowed.daily_remaining == 9
+    assert allowed.minute_remaining == 3
+
+
+def test_policy_upsert_rolls_back_when_commit_fails(
+    key_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.models import ApiDefinition
+    from app.schemas.policy import PolicyUpdate
+    from app.services.policy import PolicyService
+
+    api = ApiDefinition(
+        slug="policy-commit-failure",
+        name="Policy commit failure",
+        summary="Policy commit failure",
+        category="tools",
+        method="GET",
+        path="/v1/tools/policy-commit-failure",
+        adapter_name="builtin-tools",
+    )
+    key_session.add(api)
+    key_session.commit()
+    key_session.refresh(api)
+    service = PolicyService(key_session)
+
+    def fail_commit() -> None:
+        raise RuntimeError("simulated policy commit failure")
+
+    monkeypatch.setattr(key_session, "commit", fail_commit)
+    with pytest.raises(RuntimeError, match="simulated policy commit failure"):
+        service.upsert("policy-commit-failure", PolicyUpdate(enabled=False))
+
+    assert service.get("policy-commit-failure").enabled
