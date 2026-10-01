@@ -65,10 +65,31 @@ def test_cache_key_is_slug_and_normalized_parameter_fingerprint() -> None:
     )
 
     assert first == second
-    assert isinstance(first, CacheKey)
-    assert str(first).startswith("yeyu:cache:weather:")
+    assert isinstance(first, str)
+    assert first.startswith("yeyu:cache:weather:")
     with pytest.raises(InvalidCacheKey):
         build_cache_key("https://attacker.example/data", {})
+
+
+def test_cache_key_is_immutable_and_bound_to_its_service_factory() -> None:
+    memory = MemoryRedis()
+    owner = CacheService(client=memory)
+    other = CacheService(client=memory)
+    key = owner.key_for("weather", {"city": "city-a"})
+
+    assert isinstance(key, CacheKey)
+    for attribute in ("api_slug", "fingerprint", "_owner_token", "value"):
+        with pytest.raises(AttributeError):
+            setattr(key, attribute, object())
+
+    owner.set(key, {"temperature": 20})
+    assert owner.get(key) is not None
+    with pytest.raises(InvalidCacheKey):
+        other.get(key)
+    with pytest.raises(InvalidCacheKey):
+        other.set(key, {})
+    with pytest.raises(InvalidCacheKey):
+        other.stale_value(key)
 
 
 def test_cache_low_level_operations_reject_handwritten_matching_key() -> None:
@@ -107,7 +128,7 @@ def test_stale_cache_is_explicit_and_includes_metadata() -> None:
         default_ttl_seconds=60,
         max_stale_age_seconds=3600,
     )
-    key = build_cache_key("weather", {"city": "city-a"})
+    key = cache.key_for("weather", {"city": "city-a"})
     cache.set(
         key,
         {"temperature": 20},
@@ -133,7 +154,7 @@ def test_stale_cache_respects_maximum_age() -> None:
         default_ttl_seconds=60,
         max_stale_age_seconds=60,
     )
-    key = build_cache_key("weather", {"city": "city-a"})
+    key = cache.key_for("weather", {"city": "city-a"})
     cache.set(
         key,
         {"temperature": 20},
@@ -152,7 +173,7 @@ def test_cache_stale_window_is_after_expiry_and_capped_by_service_config() -> No
         default_ttl_seconds=60,
         max_stale_age_seconds=60,
     )
-    key = build_cache_key("weather", {"city": "city-a"})
+    key = cache.key_for("weather", {"city": "city-a"})
 
     cache.set(
         key,
@@ -172,7 +193,7 @@ def test_cache_stale_age_zero_ends_at_expiry() -> None:
     now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
     memory = MemoryRedis()
     cache = CacheService(client=memory, default_ttl_seconds=60)
-    key = build_cache_key("weather", {"city": "city-a"})
+    key = cache.key_for("weather", {"city": "city-a"})
 
     cache.set(
         key,
@@ -184,12 +205,20 @@ def test_cache_stale_age_zero_ends_at_expiry() -> None:
 
     entry = json.loads(memory.values[key.value][0])
     assert entry["stale_until"] == entry["expires_at"]
+    assert (
+        cache.stale_value(
+            key,
+            now=now + timedelta(seconds=60),
+            stale_reason="upstream_error",
+        )
+        is None
+    )
 
 
 def test_cache_write_rejects_future_data_timestamp() -> None:
     now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
     cache = CacheService(client=MemoryRedis())
-    key = build_cache_key("weather", {"city": "city-a"})
+    key = cache.key_for("weather", {"city": "city-a"})
 
     with pytest.raises(ValueError, match="future"):
         cache.set(key, {}, data_at=now + timedelta(seconds=1), now=now)
@@ -199,7 +228,7 @@ def test_cache_read_rejects_future_data_timestamp() -> None:
     now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
     memory = MemoryRedis()
     cache = CacheService(client=memory, max_stale_age_seconds=3600)
-    key = build_cache_key("weather", {"city": "city-a"})
+    key = cache.key_for("weather", {"city": "city-a"})
     memory.put_raw(
         key.value,
         _raw_entry(
@@ -217,7 +246,7 @@ def test_cache_read_rejects_reversed_timestamp_order() -> None:
     now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
     memory = MemoryRedis()
     cache = CacheService(client=memory)
-    key = build_cache_key("weather", {"city": "city-a"})
+    key = cache.key_for("weather", {"city": "city-a"})
     memory.put_raw(
         key.value,
         _raw_entry(
@@ -235,7 +264,7 @@ def test_cache_read_rejects_2030_stale_until_bypass() -> None:
     now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
     memory = MemoryRedis()
     cache = CacheService(client=memory, max_stale_age_seconds=3600)
-    key = build_cache_key("weather", {"city": "city-a"})
+    key = cache.key_for("weather", {"city": "city-a"})
     memory.put_raw(
         key.value,
         _raw_entry(
@@ -255,7 +284,7 @@ def test_cache_redis_failure_is_explicit() -> None:
             raise RedisError("redis unavailable")
 
     cache = CacheService(client=BrokenRedis())
-    key = build_cache_key("weather", {"city": "city-a"})
+    key = cache.key_for("weather", {"city": "city-a"})
 
     with pytest.raises(CacheUnavailable):
         cache.get(key)

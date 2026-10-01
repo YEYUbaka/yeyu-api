@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
+from threading import Event
 from uuid import UUID
 
 import pytest
@@ -416,6 +418,69 @@ def test_policy_admission_expires(session: Session) -> None:
             decision=decision,
         )
     assert exc_info.value.decision.code == "ADMISSION_EXPIRED"
+
+
+def test_policy_admission_take_is_atomic_under_concurrent_probe(
+    session: Session,
+) -> None:
+    api = _api(session)
+    service = PolicyService(session, redis=AtomicRedis())
+    principal = _principal()
+    ip = ip_address("192.0.2.10")
+    now = datetime(2026, 10, 1, 12, 0, tzinfo=UTC)
+    decision = service.evaluate(principal, api, ip, now)
+
+    class AdmissionProbe:
+        def __init__(self, values: dict[int, object]) -> None:
+            self.values = values
+            self.first_get_started = Event()
+            self.second_get_started = Event()
+            self.release_first_get = Event()
+            self.get_calls = 0
+
+        def get(self, key: int, default: object = None) -> object:
+            self.get_calls += 1
+            value = self.values.get(key, default)
+            if self.get_calls == 1:
+                self.first_get_started.set()
+                assert self.release_first_get.wait(timeout=2)
+            else:
+                self.second_get_started.set()
+            return value
+
+        def pop(self, key: int, default: object = None) -> object:
+            return self.values.pop(key, default)
+
+    probe = AdmissionProbe(dict(service._admissions))
+    service._admissions = probe  # type: ignore[assignment]
+
+    def take() -> object:
+        try:
+            return service._take_admission(
+                decision=decision,
+                principal=principal,
+                api=api,
+                ip=ip,
+                now=now,
+            )
+        except PolicyDenied as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        first = executor.submit(take)
+        assert probe.first_get_started.wait(timeout=2)
+        second = executor.submit(take)
+        second_started_before_release = probe.second_get_started.wait(
+            timeout=0.2
+        )
+        probe.release_first_get.set()
+        results = [first.result(timeout=2), second.result(timeout=2)]
+
+    assert second_started_before_release is False
+    assert sum(not isinstance(result, PolicyDenied) for result in results) == 1
+    denied = [result for result in results if isinstance(result, PolicyDenied)]
+    assert len(denied) == 1
+    assert denied[0].decision.code == "ADMISSION_REUSED"
 
 
 def test_policy_reports_failed_ip_remaining_after_counter_rollback(

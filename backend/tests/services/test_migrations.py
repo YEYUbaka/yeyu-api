@@ -8,8 +8,14 @@ from sqlalchemy import CheckConstraint
 
 from app.models import UsageDaily
 
-MIGRATION_PATH = Path(
-    r"E:\AI_projects\yeyu-api\backend\app\alembic\versions\20261003_add_usage_cache_tables.py"
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+MIGRATION_PATH = (
+    PROJECT_ROOT
+    / "backend"
+    / "app"
+    / "alembic"
+    / "versions"
+    / "20261003_add_usage_cache_tables.py"
 )
 
 

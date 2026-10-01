@@ -4,7 +4,7 @@ import hashlib
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
@@ -65,7 +65,7 @@ class QuotaLease:
         _exc_type: object,
         exc: BaseException | None,
         _tb: object,
-    ) -> bool:
+    ) -> Literal[False]:
         try:
             self.release()
         except Exception as cleanup_error:

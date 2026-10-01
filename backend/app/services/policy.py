@@ -4,6 +4,7 @@ import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address, ip_network
+from threading import Lock
 from typing import Any
 from uuid import UUID
 
@@ -111,6 +112,7 @@ class PolicyService:
             QuotaService(session, redis) if redis is not None else None
         )
         self._admissions: dict[int, _PolicyAdmission] = {}
+        self._admission_lock = Lock()
 
     def _api(self, api_slug: str) -> ApiDefinition:
         api = self.session.exec(
@@ -370,7 +372,8 @@ class PolicyService:
             minute_remaining=consumed.minute_remaining,
             ip_minute_remaining=consumed.ip_minute_remaining,
         )
-        self._admissions[id(admission)] = admission
+        with self._admission_lock:
+            self._admissions[id(admission)] = admission
         consumed._admission = admission
         return consumed
 
@@ -390,24 +393,25 @@ class PolicyService:
         admission = decision._admission
         if not isinstance(admission, _PolicyAdmission):
             raise PolicyDenied(self._deny("INVALID_ADMISSION"))
-        stored = self._admissions.get(id(admission))
-        if stored is None:
-            raise PolicyDenied(self._deny("ADMISSION_REUSED"))
-        if stored is not admission:
-            raise PolicyDenied(self._deny("INVALID_ADMISSION"))
-        current = _utc(now)
-        if current >= admission.expires_at:
+        with self._admission_lock:
+            stored = self._admissions.get(id(admission))
+            if stored is None:
+                raise PolicyDenied(self._deny("ADMISSION_REUSED"))
+            if stored is not admission:
+                raise PolicyDenied(self._deny("INVALID_ADMISSION"))
+            current = _utc(now)
+            if current >= admission.expires_at:
+                self._admissions.pop(id(admission), None)
+                raise PolicyDenied(self._deny("ADMISSION_EXPIRED"))
+            if (
+                admission.user_id != principal.user_id
+                or admission.api_key_id != principal.api_key_id
+                or admission.api_slug != api.slug
+                or admission.client_ip != str(ip)
+            ):
+                raise PolicyDenied(self._deny("ADMISSION_CONTEXT_MISMATCH"))
             self._admissions.pop(id(admission), None)
-            raise PolicyDenied(self._deny("ADMISSION_EXPIRED"))
-        if (
-            admission.user_id != principal.user_id
-            or admission.api_key_id != principal.api_key_id
-            or admission.api_slug != api.slug
-            or admission.client_ip != str(ip)
-        ):
-            raise PolicyDenied(self._deny("ADMISSION_CONTEXT_MISMATCH"))
-        self._admissions.pop(id(admission), None)
-        return admission
+            return admission
 
     @staticmethod
     def _preserve_original_error(
