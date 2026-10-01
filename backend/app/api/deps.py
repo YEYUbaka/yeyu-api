@@ -4,8 +4,6 @@ from uuid import UUID, uuid4
 
 import jwt
 from fastapi import Depends, HTTPException, Request, Security, status
-from fastapi.responses import JSONResponse
-from fastapi.routing import APIRoute
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.security.api_key import APIKeyHeader
 from jwt.exceptions import InvalidTokenError
@@ -52,24 +50,6 @@ class ApiError(Exception):
                 "request_id": self.request_id,
             }
         ).model_dump(mode="json")
-
-
-class ApiErrorRoute(APIRoute):
-    """Convert Task 4 domain errors to the stable public error envelope."""
-
-    def get_route_handler(self):  # type: ignore[no-untyped-def]
-        original_route_handler = super().get_route_handler()
-
-        async def route_handler(request: Request):  # type: ignore[no-untyped-def]
-            try:
-                return await original_route_handler(request)
-            except ApiError as exc:
-                return JSONResponse(
-                    status_code=exc.status_code,
-                    content=exc.response_body(),
-                )
-
-        return route_handler
 
 
 def get_current_user(request: Request, session: SessionDep, token: TokenDep) -> User:

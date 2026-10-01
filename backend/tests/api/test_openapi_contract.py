@@ -55,3 +55,17 @@ def test_api_key_auth_boundary_is_explicit_in_openapi() -> None:
         for operation in path_item.values()
         if isinstance(operation, dict)
     )
+
+
+def test_api_key_protected_route_declares_structured_errors() -> None:
+    schema = app.openapi()
+    operation = schema["paths"][
+        f"{settings.API_V1_STR}/api-keys/public-auth-check"
+    ]["get"]
+
+    assert operation["responses"]["401"]["content"]["application/json"]["schema"][
+        "$ref"
+    ].endswith("/ApiErrorResponse")
+    assert operation["responses"]["403"]["content"]["application/json"]["schema"][
+        "$ref"
+    ].endswith("/ApiErrorResponse")

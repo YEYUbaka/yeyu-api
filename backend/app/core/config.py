@@ -1,5 +1,5 @@
 import warnings
-from typing import Literal, Self
+from typing import Self
 
 from pydantic import (
     EmailStr,
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # 60 minutes * 24 hours * 8 days = 8 days
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8
     FRONTEND_HOST: str = "http://localhost:5173"
-    FASTAPI_ENV: Literal["development"] | None = None
+    FASTAPI_ENV: str | None = None
 
     PROJECT_NAME: str
     SENTRY_DSN: HttpUrl | None = None
@@ -118,6 +118,43 @@ class Settings(BaseSettings):
         self._check_default_secret(
             "FIRST_SUPERUSER_PASSWORD", self.FIRST_SUPERUSER_PASSWORD
         )
+
+        return self
+
+    @model_validator(mode="after")
+    def _validate_api_key_pepper_configuration(self) -> Self:
+        if self.API_KEY_PEPPER_VERSION <= 0:
+            raise ValueError("API_KEY_PEPPER_VERSION must be positive")
+
+        has_previous_pepper = self.API_KEY_PREVIOUS_PEPPER is not None
+        has_previous_version = self.API_KEY_PREVIOUS_PEPPER_VERSION is not None
+        if has_previous_pepper != has_previous_version:
+            raise ValueError(
+                "API_KEY_PREVIOUS_PEPPER and "
+                "API_KEY_PREVIOUS_PEPPER_VERSION must be configured together"
+            )
+        if has_previous_pepper:
+            assert self.API_KEY_PREVIOUS_PEPPER_VERSION is not None
+            if not self.API_KEY_PREVIOUS_PEPPER or not self.API_KEY_PREVIOUS_PEPPER.strip():
+                raise ValueError("API_KEY_PREVIOUS_PEPPER must not be empty")
+            if self.API_KEY_PREVIOUS_PEPPER_VERSION <= 0:
+                raise ValueError("API_KEY_PREVIOUS_PEPPER_VERSION must be positive")
+            if self.API_KEY_PREVIOUS_PEPPER_VERSION == self.API_KEY_PEPPER_VERSION:
+                raise ValueError(
+                    "API_KEY_PREVIOUS_PEPPER_VERSION must differ from current version"
+                )
+
+        if self.API_KEY_PEPPER is not None and not self.API_KEY_PEPPER.strip():
+            raise ValueError("API_KEY_PEPPER must not be empty")
+        if self.FASTAPI_ENV != "development":
+            if not self.API_KEY_PEPPER:
+                raise ValueError(
+                    "API_KEY_PEPPER is required outside development"
+                )
+            if self.API_KEY_PEPPER == self.SECRET_KEY:
+                raise ValueError(
+                    "API_KEY_PEPPER must be independent from SECRET_KEY"
+                )
 
         return self
 

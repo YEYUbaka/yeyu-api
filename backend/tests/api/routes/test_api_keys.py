@@ -181,6 +181,36 @@ def test_superuser_can_update_api_policy(
     assert response.json()["minute_limit"] == 5
 
 
+def test_policy_allowed_ips_are_normalized_at_input_boundary(
+    api_key_environment: tuple[TestClient, object],
+) -> None:
+    client, (_engine, ids) = api_key_environment
+    response = client.put(
+        f"{POLICIES_PATH}/uuid",
+        headers=_bearer(ids["admin"]),
+        json={"allowed_ips": [" 192.0.2.10/24 ", "2001:db8::1"]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["allowed_ips"] == ["192.0.2.0/24", "2001:db8::1/128"]
+
+
+@pytest.mark.parametrize("allowed_ips", [["not-an-ip"], ["192.0.2.999"], [""]])
+def test_policy_allowed_ips_reject_invalid_values(
+    api_key_environment: tuple[TestClient, object],
+    allowed_ips: list[str],
+) -> None:
+    client, (_engine, ids) = api_key_environment
+    response = client.put(
+        f"{POLICIES_PATH}/uuid",
+        headers=_bearer(ids["admin"]),
+        json={"allowed_ips": allowed_ips},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"]
+
+
 def test_api_key_routes_do_not_accept_cookie_as_x_api_key(
     api_key_environment: tuple[TestClient, object],
 ) -> None:

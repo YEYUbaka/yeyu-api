@@ -77,14 +77,18 @@ jobs:
         set -euo pipefail
         ci_postgres_password="$(openssl rand -hex 32)"
         ci_secret_key="$(openssl rand -hex 32)"
+        ci_api_key_pepper="$(openssl rand -hex 32)"
         ci_superuser_password="$(openssl rand -hex 32)"
         printf '::add-mask::%s\n' "$ci_postgres_password"
         printf '::add-mask::%s\n' "$ci_secret_key"
+        printf '::add-mask::%s\n' "$ci_api_key_pepper"
         printf '::add-mask::%s\n' "$ci_superuser_password"
         {
           printf 'POSTGRES_PASSWORD=%s\n' "$ci_postgres_password"
           printf 'PROJECT_NAME=Yeyu API CI\n'
           printf 'SECRET_KEY=%s\n' "$ci_secret_key"
+          printf 'API_KEY_PEPPER=%s\n' "$ci_api_key_pepper"
+          printf 'API_KEY_PEPPER_VERSION=1\n'
           printf 'FIRST_SUPERUSER=ci-admin@example.com\n'
           printf 'FIRST_SUPERUSER_PASSWORD=%s\n' "$ci_superuser_password"
           printf 'EMAILS_FROM_EMAIL=ci-admin@example.com\n'

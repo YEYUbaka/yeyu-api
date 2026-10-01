@@ -10,24 +10,15 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.api.deps import get_db
+from app.api.deps import get_api_key_principal, get_db
 from app.core import security
 from app.core.config import settings
 from app.main import app
 from app.models import User
 
-try:
-    from app.api.deps import ApiErrorRoute, get_api_key_principal
-except ImportError:
-    ApiErrorRoute = None
-    get_api_key_principal = None
-
 
 @pytest.fixture()
 def auth_boundary_environment() -> Iterator[tuple[TestClient, str, str, object]]:
-    if ApiErrorRoute is None or get_api_key_principal is None:
-        pytest.fail("Task 4 API-key dependency and error route are not implemented")
-
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -53,7 +44,7 @@ def auth_boundary_environment() -> Iterator[tuple[TestClient, str, str, object]]
         user_id = user.id
 
     probe_router = APIRouter(
-        prefix="/task4-auth-probe", tags=["task4-auth-probe"], route_class=ApiErrorRoute
+        prefix="/task4-auth-probe", tags=["task4-auth-probe"]
     )
 
     @probe_router.get("")

@@ -364,6 +364,31 @@ export type ApiDetail = {
 };
 
 /**
+ * ApiErrorDetail
+ */
+export type ApiErrorDetail = {
+    /**
+     * Code
+     */
+    code: string;
+    /**
+     * Message
+     */
+    message: string;
+    /**
+     * Request Id
+     */
+    request_id: string;
+};
+
+/**
+ * ApiErrorResponse
+ */
+export type ApiErrorResponse = {
+    error: ApiErrorDetail;
+};
+
+/**
  * ApiKeyCreate
  */
 export type ApiKeyCreate = {
@@ -1900,6 +1925,19 @@ export type apiKeysPublicAuthCheckData = {
     query?: never;
     url: '/api/v1/api-keys/public-auth-check';
 };
+
+export type apiKeysPublicAuthCheckErrors = {
+    /**
+     * API key is missing, invalid, or revoked
+     */
+    401: ApiErrorResponse;
+    /**
+     * The API key account is not eligible
+     */
+    403: ApiErrorResponse;
+};
+
+export type apiKeysPublicAuthCheckError = apiKeysPublicAuthCheckErrors[keyof apiKeysPublicAuthCheckErrors];
 
 export type apiKeysPublicAuthCheckResponses = {
     /**

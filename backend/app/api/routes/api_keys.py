@@ -6,13 +6,13 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import (
     ApiError,
-    ApiErrorRoute,
     ApiKeyPrincipalDep,
     CurrentUser,
     SessionDep,
 )
 from app.models import User
 from app.schemas.api_keys import (
+    ApiErrorResponse,
     ApiKeyCreate,
     ApiKeysPublic,
     CreatedApiKeyResponse,
@@ -29,8 +29,18 @@ from app.services.api_keys import (
 router = APIRouter(
     prefix="/api-keys",
     tags=["api-keys"],
-    route_class=ApiErrorRoute,
 )
+
+API_KEY_ERROR_RESPONSES = {
+    401: {
+        "model": ApiErrorResponse,
+        "description": "API key is missing, invalid, or revoked",
+    },
+    403: {
+        "model": ApiErrorResponse,
+        "description": "The API key account is not eligible",
+    },
+}
 
 
 def _ensure_user_can_manage_keys(current_user: User) -> None:
@@ -77,7 +87,11 @@ def list_api_keys(
     return ApiKeysPublic(data=records, count=len(records))
 
 
-@router.get("/public-auth-check", include_in_schema=True)
+@router.get(
+    "/public-auth-check",
+    include_in_schema=True,
+    responses=API_KEY_ERROR_RESPONSES,
+)
 def public_auth_check(principal: ApiKeyPrincipalDep) -> dict[str, object]:
     """Small protected boundary used by clients and contract tests.
 

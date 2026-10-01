@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from ipaddress import ip_network
 from typing import Any
 from uuid import UUID
 
@@ -13,7 +14,12 @@ def _normalize_allowed_ips(value: list[str]) -> list[str]:
         candidate = item.strip()
         if not candidate:
             raise ValueError("allowed_ips entries must not be empty")
-        normalized.append(candidate)
+        try:
+            normalized.append(str(ip_network(candidate, strict=False)))
+        except ValueError as exc:
+            raise ValueError(
+                "allowed_ips entries must be valid IP addresses or CIDR networks"
+            ) from exc
     return normalized
 
 

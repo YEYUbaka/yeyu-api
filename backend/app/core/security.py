@@ -35,24 +35,47 @@ def get_api_key_prefix(raw_key: str) -> str:
     return raw_key[:prefix_length]
 
 
+def _current_api_key_pepper() -> str:
+    if settings.API_KEY_PEPPER:
+        return settings.API_KEY_PEPPER
+    if settings.FASTAPI_ENV == "development":
+        return settings.SECRET_KEY
+    raise ValueError("API_KEY_PEPPER is required outside development")
+
+
 def _api_key_pepper(version: int) -> str:
     current_version = settings.API_KEY_PEPPER_VERSION
-    current_pepper = settings.API_KEY_PEPPER or settings.SECRET_KEY
+    if current_version <= 0:
+        raise ValueError("API_KEY_PEPPER_VERSION must be positive")
     if version == current_version:
-        return current_pepper
-    if (
-        settings.API_KEY_PREVIOUS_PEPPER
-        and settings.API_KEY_PREVIOUS_PEPPER_VERSION == version
-    ):
-        return settings.API_KEY_PREVIOUS_PEPPER
+        return _current_api_key_pepper()
+
+    previous_pepper = settings.API_KEY_PREVIOUS_PEPPER
+    previous_version = settings.API_KEY_PREVIOUS_PEPPER_VERSION
+    if (previous_pepper is None) != (previous_version is None):
+        raise ValueError(
+            "API_KEY_PREVIOUS_PEPPER and "
+            "API_KEY_PREVIOUS_PEPPER_VERSION must be configured together"
+        )
+    if previous_pepper is not None and previous_version is not None:
+        if not previous_pepper.strip():
+            raise ValueError("API_KEY_PREVIOUS_PEPPER must not be empty")
+        if previous_version <= 0 or previous_version == current_version:
+            raise ValueError("API key pepper versions must be positive and distinct")
+        if version == previous_version:
+            return previous_pepper
     raise ValueError(f"Unknown API key hash version: {version}")
 
 
 def api_key_hash_versions() -> tuple[int, ...]:
     """Return configured hash versions without exposing any pepper value."""
-    versions = [settings.API_KEY_PEPPER_VERSION]
+    current_version = settings.API_KEY_PEPPER_VERSION
+    _api_key_pepper(current_version)
+    versions = [current_version]
+    previous_pepper = settings.API_KEY_PREVIOUS_PEPPER
     previous_version = settings.API_KEY_PREVIOUS_PEPPER_VERSION
-    if settings.API_KEY_PREVIOUS_PEPPER and previous_version is not None:
+    if previous_pepper is not None and previous_version is not None:
+        _api_key_pepper(previous_version)
         if previous_version not in versions:
             versions.append(previous_version)
     return tuple(versions)

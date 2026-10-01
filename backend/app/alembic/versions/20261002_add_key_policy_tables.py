@@ -6,7 +6,7 @@ Create Date: 2026-10-02
 """
 
 import sqlalchemy as sa
-from alembic import context, op
+from alembic import op
 
 revision = "20261002_add_key_policy_tables"
 down_revision = "20261001_add_catalog_tables"
@@ -77,17 +77,26 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    if not context.is_offline_mode():
-        connection = op.get_bind()
-        for table_name in ("api_policy", "api_key"):
-            table = sa.table(table_name)
-            count = connection.execute(
-                sa.select(sa.func.count()).select_from(table)
-            ).scalar_one()
-            if count:
-                raise RuntimeError(
-                    f"Refusing key/policy migration downgrade: {table_name} contains data"
-                )
+    op.execute(
+        """
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM api_policy LIMIT 1) THEN
+        RAISE EXCEPTION 'Refusing key/policy migration downgrade: api_policy contains data';
+    END IF;
+END $$
+"""
+    )
+    op.execute(
+        """
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM api_key LIMIT 1) THEN
+        RAISE EXCEPTION 'Refusing key/policy migration downgrade: api_key contains data';
+    END IF;
+END $$
+"""
+    )
 
     op.drop_index("ix_api_policy_api_key_id", table_name="api_policy")
     op.drop_index("ix_api_policy_user_id", table_name="api_policy")

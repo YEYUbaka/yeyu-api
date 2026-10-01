@@ -63,38 +63,41 @@ class ApiKeyService:
 
     @staticmethod
     def _created_response(record: ApiKey, raw_key: str) -> CreatedApiKey:
-        created_at = record.created_at or _now()
+        if record.created_at is None:
+            raise RuntimeError("API key created_at was not initialized")
         return CreatedApiKey(
             id=record.id,
             prefix=record.prefix,
             secret=raw_key,
-            created_at=created_at,
+            created_at=record.created_at,
         )
 
     @staticmethod
     def _new_record(user_id: UUID, label: str | None) -> tuple[ApiKey, str]:
         raw_key = security.generate_api_key()
         hash_version = settings.API_KEY_PEPPER_VERSION
+        created_at = _now()
         record = ApiKey(
             user_id=user_id,
             prefix=security.get_api_key_prefix(raw_key),
             key_hash=security.hash_api_key(raw_key, version=hash_version),
             hash_version=hash_version,
             label=label,
+            created_at=created_at,
         )
         return record, raw_key
 
     def create(self, user_id: UUID, label: str | None) -> CreatedApiKey:
         self._ensure_key_eligible(user_id)
         record, raw_key = self._new_record(user_id, label)
+        response = self._created_response(record, raw_key)
         self.session.add(record)
         try:
             self.session.commit()
         except Exception:
             self.session.rollback()
             raise
-        self.session.refresh(record)
-        return self._created_response(record, raw_key)
+        return response
 
     def list(self, user_id: UUID) -> list[ApiKeyPublic]:
         self._get_user(user_id)
@@ -137,6 +140,7 @@ class ApiKeyService:
             raise ApiKeyAlreadyRevoked
 
         replacement, raw_key = self._new_record(user_id, old_record.label)
+        response = self._created_response(replacement, raw_key)
         try:
             old_record.revoked_at = _now()
             self.session.add(old_record)
@@ -145,8 +149,7 @@ class ApiKeyService:
         except Exception:
             self.session.rollback()
             raise
-        self.session.refresh(replacement)
-        return self._created_response(replacement, raw_key)
+        return response
 
     def authenticate(self, raw_key: str) -> ApiKeyPrincipal | None:
         if not raw_key:
