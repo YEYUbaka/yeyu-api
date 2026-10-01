@@ -7,25 +7,32 @@ type EmailSummary = {
 export async function waitForEmailHtml({
   request,
   query,
+  expectedText,
   timeout = 5000,
 }: {
   request: APIRequestContext
   query: string
+  expectedText?: string
   timeout?: number
 }) {
   const deadline = Date.now() + timeout
+  const inspectedEmailIds = new Set<string>()
 
   while (Date.now() < deadline) {
     const response = await request.get(
       `${process.env.MAILPIT_HOST}/api/v1/search`,
       {
-        params: { query, limit: 1 },
+        params: { query, limit: 20 },
       },
     )
     const { messages }: { messages: EmailSummary[] } = await response.json()
-    const email = messages[0]
 
-    if (email) {
+    for (const email of messages) {
+      if (inspectedEmailIds.has(email.ID)) {
+        continue
+      }
+      inspectedEmailIds.add(email.ID)
+
       const htmlResponse = await request.get(
         `${process.env.MAILPIT_HOST}/view/${email.ID}.html`,
       )
@@ -36,11 +43,16 @@ export async function waitForEmailHtml({
         )
       }
 
-      return htmlResponse.text()
+      const html = await htmlResponse.text()
+      if (!expectedText || html.includes(expectedText)) {
+        return html
+      }
     }
 
     await new Promise((resolve) => setTimeout(resolve, 100))
   }
 
-  throw new Error(`Timeout while trying to get the latest email for "${query}"`)
+  throw new Error(
+    `Timeout while trying to get an email matching "${expectedText ?? "any email"}" for "${query}"`,
+  )
 }
