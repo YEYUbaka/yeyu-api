@@ -61,6 +61,7 @@ class PolicyDecision(BaseModel):
     retry_after_seconds: int | None = None
     daily_remaining: int | None = None
     minute_remaining: int | None = None
+    ip_minute_remaining: int | None = None
 
 
 class PolicyErrorResponse(BaseModel):

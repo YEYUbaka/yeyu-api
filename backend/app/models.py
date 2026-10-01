@@ -1,8 +1,15 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from pydantic import EmailStr
-from sqlalchemy import JSON, CheckConstraint, Column, DateTime, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    Column,
+    Date,
+    DateTime,
+    UniqueConstraint,
+)
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -318,6 +325,79 @@ class ApiPolicy(SQLModel, table=True):
     allowed_ips: list[str] = Field(
         default_factory=list,
         sa_column=Column(JSON, nullable=False),
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class UsageDaily(SQLModel, table=True):
+    """Authoritative UTC-day weighted usage for one user/key/API tuple."""
+
+    __tablename__ = "usage_daily"
+    __table_args__ = (
+        UniqueConstraint(
+            "utc_date",
+            "user_id",
+            "api_key_id",
+            "api_slug",
+            name="uq_usage_daily_dimension",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    utc_date: date = Field(sa_type=Date, nullable=False, index=True)  # type: ignore
+    user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, index=True
+    )
+    api_key_id: uuid.UUID = Field(
+        foreign_key="api_key.id", nullable=False, index=True
+    )
+    api_slug: str = Field(max_length=100, nullable=False, index=True)
+    request_count: int = Field(default=0, nullable=False)
+    weighted_units: int = Field(default=0, nullable=False)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class CacheEntry(SQLModel, table=True):
+    """Redis-compatible cache metadata retained for future durable indexing."""
+
+    __tablename__ = "cache_entry"
+    __table_args__ = (
+        UniqueConstraint(
+            "api_slug",
+            "params_fingerprint",
+            name="uq_cache_entry_api_params",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    api_slug: str = Field(max_length=100, nullable=False, index=True)
+    params_fingerprint: str = Field(max_length=64, nullable=False, index=True)
+    payload: dict[str, object] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    data_at: datetime = Field(
+        sa_type=DateTime(timezone=True), nullable=False  # type: ignore
+    )
+    expires_at: datetime = Field(
+        sa_type=DateTime(timezone=True), nullable=False  # type: ignore
+    )
+    stale_until: datetime = Field(
+        sa_type=DateTime(timezone=True), nullable=False  # type: ignore
     )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
