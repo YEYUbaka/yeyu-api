@@ -119,7 +119,7 @@ class ApiKeyService:
     def revoke(self, key_id: UUID, user_id: UUID) -> None:
         record = self._owned_key(key_id, user_id)
         if record.revoked_at is not None:
-            raise ApiKeyAlreadyRevoked
+            return
         record.revoked_at = _now()
         self.session.add(record)
         try:

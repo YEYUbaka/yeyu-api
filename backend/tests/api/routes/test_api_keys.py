@@ -292,7 +292,7 @@ def test_key_routes_reject_missing_and_foreign_keys(
     assert foreign_response.json()["detail"] == "API key is not owned by user"
 
 
-def test_repeated_revoke_returns_structured_conflict(
+def test_repeated_revoke_is_idempotent(
     api_key_environment: tuple[TestClient, object],
 ) -> None:
     client, (_engine, ids) = api_key_environment
@@ -309,8 +309,7 @@ def test_repeated_revoke_returns_structured_conflict(
         f"{API_KEYS_PATH}/{created['id']}/revoke",
         cookies=cookie,
     )
-    assert repeated_response.status_code == 409
-    assert repeated_response.json()["error"]["code"] == "API_KEY_REVOKED"
+    assert repeated_response.status_code == 204
 
 
 def test_rotate_rejects_an_already_revoked_key(
