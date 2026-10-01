@@ -2,7 +2,7 @@
 
 import { type Client, type Options as Options2, type TDataShape, urlSearchParamsBodySerializer } from './client';
 import { client } from './client.gen';
-import type { itemsCreateItemData, itemsCreateItemErrors, itemsCreateItemResponses, itemsDeleteItemData, itemsDeleteItemErrors, itemsDeleteItemResponses, itemsReadItemData, itemsReadItemErrors, itemsReadItemResponses, itemsReadItemsData, itemsReadItemsErrors, itemsReadItemsResponses, itemsUpdateItemData, itemsUpdateItemErrors, itemsUpdateItemResponses, loginLoginAccessTokenData, loginLoginAccessTokenErrors, loginLoginAccessTokenResponses, loginRecoverPasswordData, loginRecoverPasswordErrors, loginRecoverPasswordHtmlContentData, loginRecoverPasswordHtmlContentErrors, loginRecoverPasswordHtmlContentResponses, loginRecoverPasswordResponses, loginResetPasswordData, loginResetPasswordErrors, loginResetPasswordResponses, loginTestTokenData, loginTestTokenResponses, privateCreateUserData, privateCreateUserErrors, privateCreateUserResponses, usersCreateUserData, usersCreateUserErrors, usersCreateUserResponses, usersDeleteUserData, usersDeleteUserErrors, usersDeleteUserMeData, usersDeleteUserMeResponses, usersDeleteUserResponses, usersReadUserByIdData, usersReadUserByIdErrors, usersReadUserByIdResponses, usersReadUserMeData, usersReadUserMeResponses, usersReadUsersData, usersReadUsersErrors, usersReadUsersResponses, usersRegisterUserData, usersRegisterUserErrors, usersRegisterUserResponses, usersUpdatePasswordMeData, usersUpdatePasswordMeErrors, usersUpdatePasswordMeResponses, usersUpdateUserData, usersUpdateUserErrors, usersUpdateUserMeData, usersUpdateUserMeErrors, usersUpdateUserMeResponses, usersUpdateUserResponses, utilsHealthCheckData, utilsHealthCheckResponses, utilsTestEmailData, utilsTestEmailErrors, utilsTestEmailResponses } from './types.gen';
+import type { adminCatalogCreateCatalogDefinitionData, adminCatalogCreateCatalogDefinitionErrors, adminCatalogCreateCatalogDefinitionResponses, adminCatalogDeleteCatalogDefinitionData, adminCatalogDeleteCatalogDefinitionErrors, adminCatalogDeleteCatalogDefinitionResponses, adminCatalogUpdateCatalogDefinitionData, adminCatalogUpdateCatalogDefinitionErrors, adminCatalogUpdateCatalogDefinitionResponses, catalogGetCatalogDetailData, catalogGetCatalogDetailErrors, catalogGetCatalogDetailResponses, catalogSearchCatalogData, catalogSearchCatalogErrors, catalogSearchCatalogResponses, itemsCreateItemData, itemsCreateItemErrors, itemsCreateItemResponses, itemsDeleteItemData, itemsDeleteItemErrors, itemsDeleteItemResponses, itemsReadItemData, itemsReadItemErrors, itemsReadItemResponses, itemsReadItemsData, itemsReadItemsErrors, itemsReadItemsResponses, itemsUpdateItemData, itemsUpdateItemErrors, itemsUpdateItemResponses, loginGithubCallbackData, loginGithubLoginData, loginLoginAccessTokenData, loginLoginAccessTokenErrors, loginLoginAccessTokenResponses, loginLogoutData, loginLogoutResponses, loginRecoverPasswordData, loginRecoverPasswordErrors, loginRecoverPasswordHtmlContentData, loginRecoverPasswordHtmlContentErrors, loginRecoverPasswordHtmlContentResponses, loginRecoverPasswordResponses, loginRequestEmailVerificationData, loginRequestEmailVerificationErrors, loginRequestEmailVerificationResponses, loginRequestPasswordResetData, loginRequestPasswordResetErrors, loginRequestPasswordResetResponses, loginResetPasswordData, loginResetPasswordErrors, loginResetPasswordResponses, loginTestTokenData, loginTestTokenResponses, loginVerifyEmailData, loginVerifyEmailErrors, loginVerifyEmailResponses, privateCreateUserData, privateCreateUserErrors, privateCreateUserResponses, usersCreateUserData, usersCreateUserErrors, usersCreateUserResponses, usersDeleteUserData, usersDeleteUserErrors, usersDeleteUserMeData, usersDeleteUserMeResponses, usersDeleteUserResponses, usersReadUserByIdData, usersReadUserByIdErrors, usersReadUserByIdResponses, usersReadUserMeData, usersReadUserMeResponses, usersReadUsersData, usersReadUsersErrors, usersReadUsersResponses, usersRegisterUserData, usersRegisterUserErrors, usersRegisterUserResponses, usersRequestMyEmailVerificationData, usersRequestMyEmailVerificationResponses, usersStartGithubLinkData, usersStartGithubLinkErrors, usersUpdatePasswordMeData, usersUpdatePasswordMeErrors, usersUpdatePasswordMeResponses, usersUpdateUserData, usersUpdateUserErrors, usersUpdateUserMeData, usersUpdateUserMeErrors, usersUpdateUserMeResponses, usersUpdateUserResponses, utilsHealthCheckData, utilsHealthCheckResponses, utilsTestEmailData, utilsTestEmailErrors, utilsTestEmailResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -49,6 +49,74 @@ export class LoginService {
             url: '/api/v1/login/test-token',
             ...options
         });
+    }
+
+    /**
+     * Request Password Reset
+     *
+     * Request a reset link without disclosing whether the email exists.
+     */
+    public static requestPasswordReset<ThrowOnError extends boolean = true>(options: Options<loginRequestPasswordResetData, ThrowOnError>) {
+        return (options.client ?? client).post<loginRequestPasswordResetResponses, loginRequestPasswordResetErrors, ThrowOnError>({
+            responseType: 'json',
+            url: '/api/v1/auth/request-password-reset',
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            }
+        });
+    }
+
+    /**
+     * Request Email Verification
+     */
+    public static requestEmailVerification<ThrowOnError extends boolean = true>(options: Options<loginRequestEmailVerificationData, ThrowOnError>) {
+        return (options.client ?? client).post<loginRequestEmailVerificationResponses, loginRequestEmailVerificationErrors, ThrowOnError>({
+            responseType: 'json',
+            url: '/api/v1/auth/request-email-verification',
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            }
+        });
+    }
+
+    /**
+     * Logout
+     */
+    public static logout<ThrowOnError extends boolean = true>(options?: Options<loginLogoutData, ThrowOnError>) {
+        return (options?.client ?? client).post<loginLogoutResponses, unknown, ThrowOnError>({
+            responseType: 'json',
+            url: '/api/v1/auth/logout',
+            ...options
+        });
+    }
+
+    /**
+     * Verify Email
+     */
+    public static verifyEmail<ThrowOnError extends boolean = true>(options: Options<loginVerifyEmailData, ThrowOnError>) {
+        return (options.client ?? client).get<loginVerifyEmailResponses, loginVerifyEmailErrors, ThrowOnError>({
+            responseType: 'json',
+            url: '/api/v1/auth/verify-email',
+            ...options
+        });
+    }
+
+    /**
+     * Github Login
+     */
+    public static githubLogin<ThrowOnError extends boolean = true>(options?: Options<loginGithubLoginData, ThrowOnError>) {
+        return (options?.client ?? client).get<unknown, unknown, ThrowOnError>({ url: '/api/v1/auth/github', ...options });
+    }
+
+    /**
+     * Github Callback
+     */
+    public static githubCallback<ThrowOnError extends boolean = true>(options?: Options<loginGithubCallbackData, ThrowOnError>) {
+        return (options?.client ?? client).get<unknown, unknown, ThrowOnError>({ url: '/api/v1/auth/github/callback', ...options });
     }
 
     /**
@@ -167,6 +235,33 @@ export class UsersService {
             responseType: 'json',
             security: [{ scheme: 'bearer', type: 'http' }],
             url: '/api/v1/users/me',
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            }
+        });
+    }
+
+    /**
+     * Request My Email Verification
+     */
+    public static requestMyEmailVerification<ThrowOnError extends boolean = true>(options?: Options<usersRequestMyEmailVerificationData, ThrowOnError>) {
+        return (options?.client ?? client).post<usersRequestMyEmailVerificationResponses, unknown, ThrowOnError>({
+            responseType: 'json',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/users/me/email-verification',
+            ...options
+        });
+    }
+
+    /**
+     * Start Github Link
+     */
+    public static startGithubLink<ThrowOnError extends boolean = true>(options: Options<usersStartGithubLinkData, ThrowOnError>) {
+        return (options.client ?? client).post<unknown, usersStartGithubLinkErrors, ThrowOnError>({
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/users/me/github/link',
             ...options,
             headers: {
                 'Content-Type': 'application/json',
@@ -355,6 +450,75 @@ export class ItemsService {
             responseType: 'json',
             security: [{ scheme: 'bearer', type: 'http' }],
             url: '/api/v1/items/{id}',
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            }
+        });
+    }
+}
+
+export class CatalogService {
+    /**
+     * Search Catalog
+     */
+    public static searchCatalog<ThrowOnError extends boolean = true>(options?: Options<catalogSearchCatalogData, ThrowOnError>) {
+        return (options?.client ?? client).get<catalogSearchCatalogResponses, catalogSearchCatalogErrors, ThrowOnError>({
+            responseType: 'json',
+            url: '/api/v1/catalog',
+            ...options
+        });
+    }
+
+    /**
+     * Get Catalog Detail
+     */
+    public static getCatalogDetail<ThrowOnError extends boolean = true>(options: Options<catalogGetCatalogDetailData, ThrowOnError>) {
+        return (options.client ?? client).get<catalogGetCatalogDetailResponses, catalogGetCatalogDetailErrors, ThrowOnError>({
+            responseType: 'json',
+            url: '/api/v1/catalog/{slug}',
+            ...options
+        });
+    }
+}
+
+export class AdminCatalogService {
+    /**
+     * Delete Catalog Definition
+     */
+    public static catalogDeleteCatalogDefinition<ThrowOnError extends boolean = true>(options: Options<adminCatalogDeleteCatalogDefinitionData, ThrowOnError>) {
+        return (options.client ?? client).delete<adminCatalogDeleteCatalogDefinitionResponses, adminCatalogDeleteCatalogDefinitionErrors, ThrowOnError>({
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/catalog/{slug}',
+            ...options
+        });
+    }
+
+    /**
+     * Update Catalog Definition
+     */
+    public static catalogUpdateCatalogDefinition<ThrowOnError extends boolean = true>(options: Options<adminCatalogUpdateCatalogDefinitionData, ThrowOnError>) {
+        return (options.client ?? client).patch<adminCatalogUpdateCatalogDefinitionResponses, adminCatalogUpdateCatalogDefinitionErrors, ThrowOnError>({
+            responseType: 'json',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/catalog/{slug}',
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            }
+        });
+    }
+
+    /**
+     * Create Catalog Definition
+     */
+    public static catalogCreateCatalogDefinition<ThrowOnError extends boolean = true>(options: Options<adminCatalogCreateCatalogDefinitionData, ThrowOnError>) {
+        return (options.client ?? client).post<adminCatalogCreateCatalogDefinitionResponses, adminCatalogCreateCatalogDefinitionErrors, ThrowOnError>({
+            responseType: 'json',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/catalog/{slug}',
             ...options,
             headers: {
                 'Content-Type': 'application/json',

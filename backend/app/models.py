@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 from pydantic import EmailStr
-from sqlalchemy import DateTime, UniqueConstraint
+from sqlalchemy import JSON, CheckConstraint, Column, DateTime, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -194,6 +194,59 @@ class PasswordResetToken(SQLModel, table=True):
         default=None, sa_type=DateTime(timezone=True)
     )  # type: ignore
     created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ApiDefinition(SQLModel, table=True):
+    """Curated API metadata; execution is owned by a fixed adapter name."""
+
+    __tablename__ = "api_definition"
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_api_definition_slug"),
+        CheckConstraint("auth_type = 'api_key'", name="ck_api_definition_auth_type"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    slug: str = Field(max_length=100, index=True, nullable=False)
+    name: str = Field(max_length=255, nullable=False)
+    summary: str = Field(max_length=1000, nullable=False)
+    category: str = Field(max_length=64, index=True, nullable=False)
+    method: str = Field(max_length=16, nullable=False)
+    path: str = Field(max_length=255, nullable=False)
+    auth_type: str = Field(default="api_key", max_length=32, nullable=False)
+    parameters: list[dict[str, object]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
+    response_schema: dict[str, object] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    error_codes: list[dict[str, object]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
+    examples: list[dict[str, object]] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
+    visibility: str = Field(default="public", max_length=32, index=True, nullable=False)
+    status: str = Field(default="trial", max_length=32, index=True, nullable=False)
+    is_free: bool = Field(default=True, nullable=False)
+    source_label: str = Field(default="Yeyu API", max_length=255, nullable=False)
+    adapter_name: str = Field(max_length=128, nullable=False)
+    provider_ref: str | None = Field(default=None, max_length=255)
+    cache_rules: dict[str, object] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
     )

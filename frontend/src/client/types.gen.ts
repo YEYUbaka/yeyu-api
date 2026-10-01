@@ -5,6 +5,365 @@ export type ClientOptions = {
 };
 
 /**
+ * ApiAuth
+ */
+export type ApiAuth = {
+    /**
+     * Type
+     */
+    type: 'api_key';
+    /**
+     * Header
+     */
+    header?: string;
+};
+
+/**
+ * ApiDefinitionAdmin
+ */
+export type ApiDefinitionAdmin = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Slug
+     */
+    slug: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Summary
+     */
+    summary: string;
+    /**
+     * Category
+     */
+    category: string;
+    /**
+     * Method
+     */
+    method: string;
+    /**
+     * Path
+     */
+    path: string;
+    /**
+     * Auth Type
+     */
+    auth_type: string;
+    /**
+     * Parameters
+     */
+    parameters: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Response Schema
+     */
+    response_schema: {
+        [key: string]: unknown;
+    };
+    /**
+     * Error Codes
+     */
+    error_codes: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Examples
+     */
+    examples: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Visibility
+     */
+    visibility: string;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Is Free
+     */
+    is_free: boolean;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Adapter Name
+     */
+    adapter_name: string;
+    /**
+     * Provider Ref
+     */
+    provider_ref?: string | null;
+    /**
+     * Cache Rules
+     */
+    cache_rules: {
+        [key: string]: unknown;
+    };
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+    /**
+     * Updated At
+     */
+    updated_at?: string | null;
+};
+
+/**
+ * ApiDefinitionCreate
+ */
+export type ApiDefinitionCreate = {
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Summary
+     */
+    summary?: string;
+    /**
+     * Category
+     */
+    category: string;
+    /**
+     * Method
+     */
+    method?: string;
+    /**
+     * Path
+     */
+    path: string;
+    /**
+     * Auth Type
+     */
+    auth_type?: 'api_key';
+    /**
+     * Parameters
+     */
+    parameters?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Response Schema
+     */
+    response_schema?: {
+        [key: string]: unknown;
+    };
+    /**
+     * Error Codes
+     */
+    error_codes?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Examples
+     */
+    examples?: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Visibility
+     */
+    visibility?: string;
+    /**
+     * Status
+     */
+    status?: string;
+    /**
+     * Is Free
+     */
+    is_free?: boolean;
+    /**
+     * Source
+     */
+    source?: string;
+    /**
+     * Adapter Name
+     */
+    adapter_name: string;
+    /**
+     * Provider Ref
+     */
+    provider_ref?: string | null;
+    /**
+     * Cache Rules
+     */
+    cache_rules?: {
+        [key: string]: unknown;
+    };
+};
+
+/**
+ * ApiDefinitionUpdate
+ */
+export type ApiDefinitionUpdate = {
+    /**
+     * Name
+     */
+    name?: string | null;
+    /**
+     * Summary
+     */
+    summary?: string | null;
+    /**
+     * Category
+     */
+    category?: string | null;
+    /**
+     * Method
+     */
+    method?: string | null;
+    /**
+     * Path
+     */
+    path?: string | null;
+    /**
+     * Auth Type
+     */
+    auth_type?: 'api_key' | null;
+    /**
+     * Parameters
+     */
+    parameters?: Array<{
+        [key: string]: unknown;
+    }> | null;
+    /**
+     * Response Schema
+     */
+    response_schema?: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Error Codes
+     */
+    error_codes?: Array<{
+        [key: string]: unknown;
+    }> | null;
+    /**
+     * Examples
+     */
+    examples?: Array<{
+        [key: string]: unknown;
+    }> | null;
+    /**
+     * Visibility
+     */
+    visibility?: string | null;
+    /**
+     * Status
+     */
+    status?: string | null;
+    /**
+     * Is Free
+     */
+    is_free?: boolean | null;
+    /**
+     * Source
+     */
+    source?: string | null;
+    /**
+     * Adapter Name
+     */
+    adapter_name?: string | null;
+    /**
+     * Provider Ref
+     */
+    provider_ref?: string | null;
+    /**
+     * Cache Rules
+     */
+    cache_rules?: {
+        [key: string]: unknown;
+    } | null;
+};
+
+/**
+ * ApiDetail
+ */
+export type ApiDetail = {
+    /**
+     * Slug
+     */
+    slug: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Summary
+     */
+    summary: string;
+    /**
+     * Category
+     */
+    category: string;
+    /**
+     * Method
+     */
+    method: string;
+    /**
+     * Path
+     */
+    path: string;
+    auth: ApiAuth;
+    /**
+     * Is Free
+     */
+    is_free: boolean;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Updated At
+     */
+    updated_at?: string | null;
+    /**
+     * Parameters
+     */
+    parameters: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Response Schema
+     */
+    response_schema: {
+        [key: string]: unknown;
+    };
+    /**
+     * Errors
+     */
+    errors: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Examples
+     */
+    examples: Array<{
+        [key: string]: unknown;
+    }>;
+    /**
+     * Source
+     */
+    source: string;
+    /**
+     * Cache Rules
+     */
+    cache_rules: {
+        [key: string]: unknown;
+    };
+};
+
+/**
  * Body_login-login_access_token
  */
 export type Body_login_login_access_token = {
@@ -32,6 +391,94 @@ export type Body_login_login_access_token = {
      * Client Secret
      */
     client_secret?: string | null;
+};
+
+/**
+ * CatalogItem
+ */
+export type CatalogItem = {
+    /**
+     * Slug
+     */
+    slug: string;
+    /**
+     * Name
+     */
+    name: string;
+    /**
+     * Summary
+     */
+    summary: string;
+    /**
+     * Category
+     */
+    category: string;
+    /**
+     * Method
+     */
+    method: string;
+    /**
+     * Path
+     */
+    path: string;
+    /**
+     * Auth Type
+     */
+    auth_type: string;
+    /**
+     * Is Free
+     */
+    is_free: boolean;
+    /**
+     * Status
+     */
+    status: string;
+    /**
+     * Updated At
+     */
+    updated_at?: string | null;
+};
+
+/**
+ * CatalogPage
+ */
+export type CatalogPage = {
+    /**
+     * Data
+     */
+    data: Array<CatalogItem>;
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Page Size
+     */
+    page_size: number;
+};
+
+/**
+ * EmailAddressRequest
+ */
+export type EmailAddressRequest = {
+    /**
+     * Email
+     */
+    email: string;
+};
+
+/**
+ * GitHubLinkRequest
+ */
+export type GitHubLinkRequest = {
+    /**
+     * Current Password
+     */
+    current_password: string;
 };
 
 /**
@@ -237,6 +684,10 @@ export type UserPublic = {
      */
     id: string;
     /**
+     * Email Verified
+     */
+    email_verified?: boolean;
+    /**
      * Created At
      */
     created_at?: string | null;
@@ -382,6 +833,116 @@ export type loginTestTokenResponses = {
 };
 
 export type loginTestTokenResponse = loginTestTokenResponses[keyof loginTestTokenResponses];
+
+export type loginRequestPasswordResetData = {
+    body: EmailAddressRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/request-password-reset';
+};
+
+export type loginRequestPasswordResetErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type loginRequestPasswordResetError = loginRequestPasswordResetErrors[keyof loginRequestPasswordResetErrors];
+
+export type loginRequestPasswordResetResponses = {
+    /**
+     * Successful Response
+     */
+    202: Message;
+};
+
+export type loginRequestPasswordResetResponse = loginRequestPasswordResetResponses[keyof loginRequestPasswordResetResponses];
+
+export type loginRequestEmailVerificationData = {
+    body: EmailAddressRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/request-email-verification';
+};
+
+export type loginRequestEmailVerificationErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type loginRequestEmailVerificationError = loginRequestEmailVerificationErrors[keyof loginRequestEmailVerificationErrors];
+
+export type loginRequestEmailVerificationResponses = {
+    /**
+     * Successful Response
+     */
+    202: Message;
+};
+
+export type loginRequestEmailVerificationResponse = loginRequestEmailVerificationResponses[keyof loginRequestEmailVerificationResponses];
+
+export type loginLogoutData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/logout';
+};
+
+export type loginLogoutResponses = {
+    /**
+     * Successful Response
+     */
+    200: Message;
+};
+
+export type loginLogoutResponse = loginLogoutResponses[keyof loginLogoutResponses];
+
+export type loginVerifyEmailData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Token
+         */
+        token: string;
+    };
+    url: '/api/v1/auth/verify-email';
+};
+
+export type loginVerifyEmailErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type loginVerifyEmailError = loginVerifyEmailErrors[keyof loginVerifyEmailErrors];
+
+export type loginVerifyEmailResponses = {
+    /**
+     * Successful Response
+     */
+    200: Message;
+};
+
+export type loginVerifyEmailResponse = loginVerifyEmailResponses[keyof loginVerifyEmailResponses];
+
+export type loginGithubLoginData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/github';
+};
+
+export type loginGithubCallbackData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/auth/github/callback';
+};
 
 export type loginRecoverPasswordData = {
     body?: never;
@@ -583,6 +1144,38 @@ export type usersUpdateUserMeResponses = {
 };
 
 export type usersUpdateUserMeResponse = usersUpdateUserMeResponses[keyof usersUpdateUserMeResponses];
+
+export type usersRequestMyEmailVerificationData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/users/me/email-verification';
+};
+
+export type usersRequestMyEmailVerificationResponses = {
+    /**
+     * Successful Response
+     */
+    202: Message;
+};
+
+export type usersRequestMyEmailVerificationResponse = usersRequestMyEmailVerificationResponses[keyof usersRequestMyEmailVerificationResponses];
+
+export type usersStartGithubLinkData = {
+    body: GitHubLinkRequest;
+    path?: never;
+    query?: never;
+    url: '/api/v1/users/me/github/link';
+};
+
+export type usersStartGithubLinkErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type usersStartGithubLinkError = usersStartGithubLinkErrors[keyof usersStartGithubLinkErrors];
 
 export type usersUpdatePasswordMeData = {
     body: UpdatePassword;
@@ -920,6 +1513,172 @@ export type itemsUpdateItemResponses = {
 };
 
 export type itemsUpdateItemResponse = itemsUpdateItemResponses[keyof itemsUpdateItemResponses];
+
+export type catalogSearchCatalogData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Query
+         */
+        query?: string | null;
+        /**
+         * Category
+         */
+        category?: string | null;
+        /**
+         * Status
+         */
+        status?: string | null;
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+    };
+    url: '/api/v1/catalog';
+};
+
+export type catalogSearchCatalogErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type catalogSearchCatalogError = catalogSearchCatalogErrors[keyof catalogSearchCatalogErrors];
+
+export type catalogSearchCatalogResponses = {
+    /**
+     * Successful Response
+     */
+    200: CatalogPage;
+};
+
+export type catalogSearchCatalogResponse = catalogSearchCatalogResponses[keyof catalogSearchCatalogResponses];
+
+export type catalogGetCatalogDetailData = {
+    body?: never;
+    path: {
+        /**
+         * Slug
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/catalog/{slug}';
+};
+
+export type catalogGetCatalogDetailErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type catalogGetCatalogDetailError = catalogGetCatalogDetailErrors[keyof catalogGetCatalogDetailErrors];
+
+export type catalogGetCatalogDetailResponses = {
+    /**
+     * Successful Response
+     */
+    200: ApiDetail;
+};
+
+export type catalogGetCatalogDetailResponse = catalogGetCatalogDetailResponses[keyof catalogGetCatalogDetailResponses];
+
+export type adminCatalogDeleteCatalogDefinitionData = {
+    body?: never;
+    path: {
+        /**
+         * Slug
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/catalog/{slug}';
+};
+
+export type adminCatalogDeleteCatalogDefinitionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type adminCatalogDeleteCatalogDefinitionError = adminCatalogDeleteCatalogDefinitionErrors[keyof adminCatalogDeleteCatalogDefinitionErrors];
+
+export type adminCatalogDeleteCatalogDefinitionResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type adminCatalogDeleteCatalogDefinitionResponse = adminCatalogDeleteCatalogDefinitionResponses[keyof adminCatalogDeleteCatalogDefinitionResponses];
+
+export type adminCatalogUpdateCatalogDefinitionData = {
+    body: ApiDefinitionUpdate;
+    path: {
+        /**
+         * Slug
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/catalog/{slug}';
+};
+
+export type adminCatalogUpdateCatalogDefinitionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type adminCatalogUpdateCatalogDefinitionError = adminCatalogUpdateCatalogDefinitionErrors[keyof adminCatalogUpdateCatalogDefinitionErrors];
+
+export type adminCatalogUpdateCatalogDefinitionResponses = {
+    /**
+     * Successful Response
+     */
+    200: ApiDefinitionAdmin;
+};
+
+export type adminCatalogUpdateCatalogDefinitionResponse = adminCatalogUpdateCatalogDefinitionResponses[keyof adminCatalogUpdateCatalogDefinitionResponses];
+
+export type adminCatalogCreateCatalogDefinitionData = {
+    body: ApiDefinitionCreate;
+    path: {
+        /**
+         * Slug
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/catalog/{slug}';
+};
+
+export type adminCatalogCreateCatalogDefinitionErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type adminCatalogCreateCatalogDefinitionError = adminCatalogCreateCatalogDefinitionErrors[keyof adminCatalogCreateCatalogDefinitionErrors];
+
+export type adminCatalogCreateCatalogDefinitionResponses = {
+    /**
+     * Successful Response
+     */
+    201: ApiDefinitionAdmin;
+};
+
+export type adminCatalogCreateCatalogDefinitionResponse = adminCatalogCreateCatalogDefinitionResponses[keyof adminCatalogCreateCatalogDefinitionResponses];
 
 export type privateCreateUserData = {
     body: PrivateUserCreate;
