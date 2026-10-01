@@ -72,6 +72,14 @@ class Settings(BaseSettings):
     IDENTITY_RATE_LIMIT_PER_MINUTE: int = 5
     IDENTITY_OAUTH_RATE_LIMIT_PER_MINUTE: int = 10
 
+    # API-key pepper is a persistent secret reference supplied by deployment.
+    # The existing SECRET_KEY is a local fallback so older environments remain
+    # bootable; production should set a separate API_KEY_PEPPER.
+    API_KEY_PEPPER: str | None = None
+    API_KEY_PEPPER_VERSION: int = 1
+    API_KEY_PREVIOUS_PEPPER: str | None = None
+    API_KEY_PREVIOUS_PEPPER_VERSION: int | None = None
+
     @computed_field  # type: ignore[prop-decorator]
     @property
     def emails_enabled(self) -> bool:
@@ -104,6 +112,7 @@ class Settings(BaseSettings):
     @model_validator(mode="after")
     def _enforce_non_default_secrets(self) -> Self:
         self._check_default_secret("SECRET_KEY", self.SECRET_KEY)
+        self._check_default_secret("API_KEY_PEPPER", self.API_KEY_PEPPER)
         for host in self.DATABASE_URL.hosts():
             self._check_default_secret("DATABASE_URL password", host["password"])
         self._check_default_secret(

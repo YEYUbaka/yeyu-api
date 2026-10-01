@@ -364,6 +364,64 @@ export type ApiDetail = {
 };
 
 /**
+ * ApiKeyCreate
+ */
+export type ApiKeyCreate = {
+    /**
+     * Label
+     */
+    label?: string | null;
+};
+
+/**
+ * ApiKeyPublic
+ */
+export type ApiKeyPublic = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Prefix
+     */
+    prefix: string;
+    /**
+     * Label
+     */
+    label?: string | null;
+    /**
+     * Hash Version
+     */
+    hash_version: number;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+    /**
+     * Last Used At
+     */
+    last_used_at?: string | null;
+    /**
+     * Revoked At
+     */
+    revoked_at?: string | null;
+};
+
+/**
+ * ApiKeysPublic
+ */
+export type ApiKeysPublic = {
+    /**
+     * Data
+     */
+    data: Array<ApiKeyPublic>;
+    /**
+     * Count
+     */
+    count: number;
+};
+
+/**
  * Body_login-login_access_token
  */
 export type Body_login_login_access_token = {
@@ -459,6 +517,37 @@ export type CatalogPage = {
      * Page Size
      */
     page_size: number;
+};
+
+/**
+ * CreatedApiKey
+ *
+ * The only response shape that contains a complete raw API secret.
+ */
+export type CreatedApiKey = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Prefix
+     */
+    prefix: string;
+    /**
+     * Secret
+     */
+    secret: string;
+    /**
+     * Created At
+     */
+    created_at: string;
+};
+
+/**
+ * CreatedApiKeyResponse
+ */
+export type CreatedApiKeyResponse = {
+    data: CreatedApiKey;
 };
 
 /**
@@ -581,6 +670,90 @@ export type NewPassword = {
      * New Password
      */
     new_password: string;
+};
+
+/**
+ * PolicyUpdate
+ */
+export type PolicyUpdate = {
+    /**
+     * Enabled
+     */
+    enabled?: boolean | null;
+    /**
+     * Minute Limit
+     */
+    minute_limit?: number | null;
+    /**
+     * Ip Minute Limit
+     */
+    ip_minute_limit?: number | null;
+    /**
+     * Daily Limit
+     */
+    daily_limit?: number | null;
+    /**
+     * Concurrency Limit
+     */
+    concurrency_limit?: number | null;
+    /**
+     * Weight
+     */
+    weight?: number | null;
+    /**
+     * Allowed Ips
+     */
+    allowed_ips?: Array<string> | null;
+};
+
+/**
+ * PolicyView
+ */
+export type PolicyView = {
+    /**
+     * Id
+     */
+    id?: string | null;
+    /**
+     * Api Slug
+     */
+    api_slug: string;
+    /**
+     * Enabled
+     */
+    enabled: boolean;
+    /**
+     * Minute Limit
+     */
+    minute_limit: number;
+    /**
+     * Ip Minute Limit
+     */
+    ip_minute_limit: number;
+    /**
+     * Daily Limit
+     */
+    daily_limit: number;
+    /**
+     * Concurrency Limit
+     */
+    concurrency_limit: number;
+    /**
+     * Weight
+     */
+    weight: number;
+    /**
+     * Allowed Ips
+     */
+    allowed_ips: Array<string>;
+    /**
+     * Created At
+     */
+    created_at?: string | null;
+    /**
+     * Updated At
+     */
+    updated_at?: string | null;
 };
 
 /**
@@ -1679,6 +1852,187 @@ export type adminCatalogCreateCatalogDefinitionResponses = {
 };
 
 export type adminCatalogCreateCatalogDefinitionResponse = adminCatalogCreateCatalogDefinitionResponses[keyof adminCatalogCreateCatalogDefinitionResponses];
+
+export type apiKeysListApiKeysData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/api-keys';
+};
+
+export type apiKeysListApiKeysResponses = {
+    /**
+     * Successful Response
+     */
+    200: ApiKeysPublic;
+};
+
+export type apiKeysListApiKeysResponse = apiKeysListApiKeysResponses[keyof apiKeysListApiKeysResponses];
+
+export type apiKeysCreateApiKeyData = {
+    body: ApiKeyCreate;
+    path?: never;
+    query?: never;
+    url: '/api/v1/api-keys';
+};
+
+export type apiKeysCreateApiKeyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type apiKeysCreateApiKeyError = apiKeysCreateApiKeyErrors[keyof apiKeysCreateApiKeyErrors];
+
+export type apiKeysCreateApiKeyResponses = {
+    /**
+     * Successful Response
+     */
+    201: CreatedApiKeyResponse;
+};
+
+export type apiKeysCreateApiKeyResponse = apiKeysCreateApiKeyResponses[keyof apiKeysCreateApiKeyResponses];
+
+export type apiKeysPublicAuthCheckData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/api-keys/public-auth-check';
+};
+
+export type apiKeysPublicAuthCheckResponses = {
+    /**
+     * Response Api-Keys-Public Auth Check
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type apiKeysPublicAuthCheckResponse = apiKeysPublicAuthCheckResponses[keyof apiKeysPublicAuthCheckResponses];
+
+export type apiKeysRevokeApiKeyData = {
+    body?: never;
+    path: {
+        /**
+         * Key Id
+         */
+        key_id: string;
+    };
+    query?: never;
+    url: '/api/v1/api-keys/{key_id}/revoke';
+};
+
+export type apiKeysRevokeApiKeyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type apiKeysRevokeApiKeyError = apiKeysRevokeApiKeyErrors[keyof apiKeysRevokeApiKeyErrors];
+
+export type apiKeysRevokeApiKeyResponses = {
+    /**
+     * Successful Response
+     */
+    204: void;
+};
+
+export type apiKeysRevokeApiKeyResponse = apiKeysRevokeApiKeyResponses[keyof apiKeysRevokeApiKeyResponses];
+
+export type apiKeysRotateApiKeyData = {
+    body?: never;
+    path: {
+        /**
+         * Key Id
+         */
+        key_id: string;
+    };
+    query?: never;
+    url: '/api/v1/api-keys/{key_id}/rotate';
+};
+
+export type apiKeysRotateApiKeyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type apiKeysRotateApiKeyError = apiKeysRotateApiKeyErrors[keyof apiKeysRotateApiKeyErrors];
+
+export type apiKeysRotateApiKeyResponses = {
+    /**
+     * Successful Response
+     */
+    201: CreatedApiKeyResponse;
+};
+
+export type apiKeysRotateApiKeyResponse = apiKeysRotateApiKeyResponses[keyof apiKeysRotateApiKeyResponses];
+
+export type adminPoliciesGetPolicyData = {
+    body?: never;
+    path: {
+        /**
+         * Api Slug
+         */
+        api_slug: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/policies/{api_slug}';
+};
+
+export type adminPoliciesGetPolicyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type adminPoliciesGetPolicyError = adminPoliciesGetPolicyErrors[keyof adminPoliciesGetPolicyErrors];
+
+export type adminPoliciesGetPolicyResponses = {
+    /**
+     * Successful Response
+     */
+    200: PolicyView;
+};
+
+export type adminPoliciesGetPolicyResponse = adminPoliciesGetPolicyResponses[keyof adminPoliciesGetPolicyResponses];
+
+export type adminPoliciesUpdatePolicyData = {
+    body: PolicyUpdate;
+    path: {
+        /**
+         * Api Slug
+         */
+        api_slug: string;
+    };
+    query?: never;
+    url: '/api/v1/admin/policies/{api_slug}';
+};
+
+export type adminPoliciesUpdatePolicyErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type adminPoliciesUpdatePolicyError = adminPoliciesUpdatePolicyErrors[keyof adminPoliciesUpdatePolicyErrors];
+
+export type adminPoliciesUpdatePolicyResponses = {
+    /**
+     * Successful Response
+     */
+    200: PolicyView;
+};
+
+export type adminPoliciesUpdatePolicyResponse = adminPoliciesUpdatePolicyResponses[keyof adminPoliciesUpdatePolicyResponses];
 
 export type privateCreateUserData = {
     body: PrivateUserCreate;

@@ -2,7 +2,7 @@
 
 import { type Client, type Options as Options2, type TDataShape, urlSearchParamsBodySerializer } from './client';
 import { client } from './client.gen';
-import type { adminCatalogCreateCatalogDefinitionData, adminCatalogCreateCatalogDefinitionErrors, adminCatalogCreateCatalogDefinitionResponses, adminCatalogDeleteCatalogDefinitionData, adminCatalogDeleteCatalogDefinitionErrors, adminCatalogDeleteCatalogDefinitionResponses, adminCatalogUpdateCatalogDefinitionData, adminCatalogUpdateCatalogDefinitionErrors, adminCatalogUpdateCatalogDefinitionResponses, catalogGetCatalogDetailData, catalogGetCatalogDetailErrors, catalogGetCatalogDetailResponses, catalogSearchCatalogData, catalogSearchCatalogErrors, catalogSearchCatalogResponses, itemsCreateItemData, itemsCreateItemErrors, itemsCreateItemResponses, itemsDeleteItemData, itemsDeleteItemErrors, itemsDeleteItemResponses, itemsReadItemData, itemsReadItemErrors, itemsReadItemResponses, itemsReadItemsData, itemsReadItemsErrors, itemsReadItemsResponses, itemsUpdateItemData, itemsUpdateItemErrors, itemsUpdateItemResponses, loginGithubCallbackData, loginGithubLoginData, loginLoginAccessTokenData, loginLoginAccessTokenErrors, loginLoginAccessTokenResponses, loginLogoutData, loginLogoutResponses, loginRecoverPasswordData, loginRecoverPasswordErrors, loginRecoverPasswordHtmlContentData, loginRecoverPasswordHtmlContentErrors, loginRecoverPasswordHtmlContentResponses, loginRecoverPasswordResponses, loginRequestEmailVerificationData, loginRequestEmailVerificationErrors, loginRequestEmailVerificationResponses, loginRequestPasswordResetData, loginRequestPasswordResetErrors, loginRequestPasswordResetResponses, loginResetPasswordData, loginResetPasswordErrors, loginResetPasswordResponses, loginTestTokenData, loginTestTokenResponses, loginVerifyEmailData, loginVerifyEmailErrors, loginVerifyEmailResponses, privateCreateUserData, privateCreateUserErrors, privateCreateUserResponses, usersCreateUserData, usersCreateUserErrors, usersCreateUserResponses, usersDeleteUserData, usersDeleteUserErrors, usersDeleteUserMeData, usersDeleteUserMeResponses, usersDeleteUserResponses, usersReadUserByIdData, usersReadUserByIdErrors, usersReadUserByIdResponses, usersReadUserMeData, usersReadUserMeResponses, usersReadUsersData, usersReadUsersErrors, usersReadUsersResponses, usersRegisterUserData, usersRegisterUserErrors, usersRegisterUserResponses, usersRequestMyEmailVerificationData, usersRequestMyEmailVerificationResponses, usersStartGithubLinkData, usersStartGithubLinkErrors, usersUpdatePasswordMeData, usersUpdatePasswordMeErrors, usersUpdatePasswordMeResponses, usersUpdateUserData, usersUpdateUserErrors, usersUpdateUserMeData, usersUpdateUserMeErrors, usersUpdateUserMeResponses, usersUpdateUserResponses, utilsHealthCheckData, utilsHealthCheckResponses, utilsTestEmailData, utilsTestEmailErrors, utilsTestEmailResponses } from './types.gen';
+import type { adminCatalogCreateCatalogDefinitionData, adminCatalogCreateCatalogDefinitionErrors, adminCatalogCreateCatalogDefinitionResponses, adminCatalogDeleteCatalogDefinitionData, adminCatalogDeleteCatalogDefinitionErrors, adminCatalogDeleteCatalogDefinitionResponses, adminCatalogUpdateCatalogDefinitionData, adminCatalogUpdateCatalogDefinitionErrors, adminCatalogUpdateCatalogDefinitionResponses, adminPoliciesGetPolicyData, adminPoliciesGetPolicyErrors, adminPoliciesGetPolicyResponses, adminPoliciesUpdatePolicyData, adminPoliciesUpdatePolicyErrors, adminPoliciesUpdatePolicyResponses, apiKeysCreateApiKeyData, apiKeysCreateApiKeyErrors, apiKeysCreateApiKeyResponses, apiKeysListApiKeysData, apiKeysListApiKeysResponses, apiKeysPublicAuthCheckData, apiKeysPublicAuthCheckResponses, apiKeysRevokeApiKeyData, apiKeysRevokeApiKeyErrors, apiKeysRevokeApiKeyResponses, apiKeysRotateApiKeyData, apiKeysRotateApiKeyErrors, apiKeysRotateApiKeyResponses, catalogGetCatalogDetailData, catalogGetCatalogDetailErrors, catalogGetCatalogDetailResponses, catalogSearchCatalogData, catalogSearchCatalogErrors, catalogSearchCatalogResponses, itemsCreateItemData, itemsCreateItemErrors, itemsCreateItemResponses, itemsDeleteItemData, itemsDeleteItemErrors, itemsDeleteItemResponses, itemsReadItemData, itemsReadItemErrors, itemsReadItemResponses, itemsReadItemsData, itemsReadItemsErrors, itemsReadItemsResponses, itemsUpdateItemData, itemsUpdateItemErrors, itemsUpdateItemResponses, loginGithubCallbackData, loginGithubLoginData, loginLoginAccessTokenData, loginLoginAccessTokenErrors, loginLoginAccessTokenResponses, loginLogoutData, loginLogoutResponses, loginRecoverPasswordData, loginRecoverPasswordErrors, loginRecoverPasswordHtmlContentData, loginRecoverPasswordHtmlContentErrors, loginRecoverPasswordHtmlContentResponses, loginRecoverPasswordResponses, loginRequestEmailVerificationData, loginRequestEmailVerificationErrors, loginRequestEmailVerificationResponses, loginRequestPasswordResetData, loginRequestPasswordResetErrors, loginRequestPasswordResetResponses, loginResetPasswordData, loginResetPasswordErrors, loginResetPasswordResponses, loginTestTokenData, loginTestTokenResponses, loginVerifyEmailData, loginVerifyEmailErrors, loginVerifyEmailResponses, privateCreateUserData, privateCreateUserErrors, privateCreateUserResponses, usersCreateUserData, usersCreateUserErrors, usersCreateUserResponses, usersDeleteUserData, usersDeleteUserErrors, usersDeleteUserMeData, usersDeleteUserMeResponses, usersDeleteUserResponses, usersReadUserByIdData, usersReadUserByIdErrors, usersReadUserByIdResponses, usersReadUserMeData, usersReadUserMeResponses, usersReadUsersData, usersReadUsersErrors, usersReadUsersResponses, usersRegisterUserData, usersRegisterUserErrors, usersRegisterUserResponses, usersRequestMyEmailVerificationData, usersRequestMyEmailVerificationResponses, usersStartGithubLinkData, usersStartGithubLinkErrors, usersUpdatePasswordMeData, usersUpdatePasswordMeErrors, usersUpdatePasswordMeResponses, usersUpdateUserData, usersUpdateUserErrors, usersUpdateUserMeData, usersUpdateUserMeErrors, usersUpdateUserMeResponses, usersUpdateUserResponses, utilsHealthCheckData, utilsHealthCheckResponses, utilsTestEmailData, utilsTestEmailErrors, utilsTestEmailResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -519,6 +519,106 @@ export class AdminCatalogService {
             responseType: 'json',
             security: [{ scheme: 'bearer', type: 'http' }],
             url: '/api/v1/admin/catalog/{slug}',
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            }
+        });
+    }
+}
+
+export class ApiKeysService {
+    /**
+     * List Api Keys
+     */
+    public static keysListApiKeys<ThrowOnError extends boolean = true>(options?: Options<apiKeysListApiKeysData, ThrowOnError>) {
+        return (options?.client ?? client).get<apiKeysListApiKeysResponses, unknown, ThrowOnError>({
+            responseType: 'json',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/api-keys',
+            ...options
+        });
+    }
+
+    /**
+     * Create Api Key
+     */
+    public static keysCreateApiKey<ThrowOnError extends boolean = true>(options: Options<apiKeysCreateApiKeyData, ThrowOnError>) {
+        return (options.client ?? client).post<apiKeysCreateApiKeyResponses, apiKeysCreateApiKeyErrors, ThrowOnError>({
+            responseType: 'json',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/api-keys',
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                ...options.headers
+            }
+        });
+    }
+
+    /**
+     * Public Auth Check
+     *
+     * Small protected boundary used by clients and contract tests.
+     *
+     * Task 5 owns actual tool execution; this route only proves independent key
+     * authentication and does not execute an adapter.
+     */
+    public static keysPublicAuthCheck<ThrowOnError extends boolean = true>(options?: Options<apiKeysPublicAuthCheckData, ThrowOnError>) {
+        return (options?.client ?? client).get<apiKeysPublicAuthCheckResponses, unknown, ThrowOnError>({
+            responseType: 'json',
+            security: [{ name: 'X-API-Key', type: 'apiKey' }],
+            url: '/api/v1/api-keys/public-auth-check',
+            ...options
+        });
+    }
+
+    /**
+     * Revoke Api Key
+     */
+    public static keysRevokeApiKey<ThrowOnError extends boolean = true>(options: Options<apiKeysRevokeApiKeyData, ThrowOnError>) {
+        return (options.client ?? client).post<apiKeysRevokeApiKeyResponses, apiKeysRevokeApiKeyErrors, ThrowOnError>({
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/api-keys/{key_id}/revoke',
+            ...options
+        });
+    }
+
+    /**
+     * Rotate Api Key
+     */
+    public static keysRotateApiKey<ThrowOnError extends boolean = true>(options: Options<apiKeysRotateApiKeyData, ThrowOnError>) {
+        return (options.client ?? client).post<apiKeysRotateApiKeyResponses, apiKeysRotateApiKeyErrors, ThrowOnError>({
+            responseType: 'json',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/api-keys/{key_id}/rotate',
+            ...options
+        });
+    }
+}
+
+export class AdminPoliciesService {
+    /**
+     * Get Policy
+     */
+    public static policiesGetPolicy<ThrowOnError extends boolean = true>(options: Options<adminPoliciesGetPolicyData, ThrowOnError>) {
+        return (options.client ?? client).get<adminPoliciesGetPolicyResponses, adminPoliciesGetPolicyErrors, ThrowOnError>({
+            responseType: 'json',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/policies/{api_slug}',
+            ...options
+        });
+    }
+
+    /**
+     * Update Policy
+     */
+    public static policiesUpdatePolicy<ThrowOnError extends boolean = true>(options: Options<adminPoliciesUpdatePolicyData, ThrowOnError>) {
+        return (options.client ?? client).put<adminPoliciesUpdatePolicyResponses, adminPoliciesUpdatePolicyErrors, ThrowOnError>({
+            responseType: 'json',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/policies/{api_slug}',
             ...options,
             headers: {
                 'Content-Type': 'application/json',

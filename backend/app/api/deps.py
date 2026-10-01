@@ -1,10 +1,13 @@
 from collections.abc import Generator
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import jwt
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, Security, status
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.security.api_key import APIKeyHeader
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
 from sqlmodel import Session
@@ -13,6 +16,8 @@ from app.core import security
 from app.core.config import settings
 from app.core.db import engine
 from app.models import TokenPayload, User
+from app.schemas.api_keys import ApiErrorResponse, ApiKeyPrincipal
+from app.services.api_keys import ApiKeyService
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token",
@@ -27,6 +32,44 @@ def get_db() -> Generator[Session]:
 
 SessionDep = Annotated[Session, Depends(get_db)]
 TokenDep = Annotated[str | None, Depends(reusable_oauth2)]
+
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+class ApiError(Exception):
+    def __init__(self, status_code: int, code: str, message: str) -> None:
+        self.status_code = status_code
+        self.code = code
+        self.message = message
+        self.request_id = str(uuid4())
+        super().__init__(message)
+
+    def response_body(self) -> dict[str, object]:
+        return ApiErrorResponse(
+            error={
+                "code": self.code,
+                "message": self.message,
+                "request_id": self.request_id,
+            }
+        ).model_dump(mode="json")
+
+
+class ApiErrorRoute(APIRoute):
+    """Convert Task 4 domain errors to the stable public error envelope."""
+
+    def get_route_handler(self):  # type: ignore[no-untyped-def]
+        original_route_handler = super().get_route_handler()
+
+        async def route_handler(request: Request):  # type: ignore[no-untyped-def]
+            try:
+                return await original_route_handler(request)
+            except ApiError as exc:
+                return JSONResponse(
+                    status_code=exc.status_code,
+                    content=exc.response_body(),
+                )
+
+        return route_handler
 
 
 def get_current_user(request: Request, session: SessionDep, token: TokenDep) -> User:
@@ -67,6 +110,32 @@ def get_current_user(request: Request, session: SessionDep, token: TokenDep) -> 
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def get_api_key_principal(
+    request: Request,
+    session: SessionDep,
+    raw_key: Annotated[str | None, Security(api_key_header)],
+) -> ApiKeyPrincipal:
+    """Authenticate only the X-API-Key header, never the management cookie."""
+    del request
+    if not raw_key:
+        raise ApiError(401, "API_KEY_REQUIRED", "API key is required")
+    principal = ApiKeyService(session).authenticate(raw_key)
+    if principal is None:
+        raise ApiError(401, "API_KEY_INVALID", "API key is invalid")
+    if principal.revoked_at is not None:
+        raise ApiError(401, "API_KEY_REVOKED", "API key is revoked")
+    if not principal.email_verified:
+        raise ApiError(403, "ACCOUNT_UNVERIFIED", "Account email is not verified")
+    if not principal.is_active:
+        raise ApiError(403, "ACCOUNT_SUSPENDED", "Account is suspended")
+    return principal
+
+
+ApiKeyPrincipalDep = Annotated[
+    ApiKeyPrincipal, Depends(get_api_key_principal)
+]
 
 
 def get_current_active_superuser(current_user: CurrentUser) -> User:

@@ -19,7 +19,7 @@ def test_catalog_routes_are_registered_without_public_auth_requirement() -> None
     assert schema["paths"][admin_path]["delete"]["security"]
 
 
-def test_catalog_openapi_exposes_documentation_shapes_and_no_executor_scheme() -> None:
+def test_catalog_openapi_exposes_documentation_shapes_without_auth_requirement() -> None:
     schema = app.openapi()
     schemas = schema["components"]["schemas"]
 
@@ -28,7 +28,30 @@ def test_catalog_openapi_exposes_documentation_shapes_and_no_executor_scheme() -
     assert schemas["ApiDetail"]["properties"]["auth"]["$ref"].endswith(
         "/ApiAuth"
     )
-    assert not any(
-        name.casefold() in {"apikey", "api_key"}
-        for name in schema["components"].get("securitySchemes", {})
+
+
+def test_api_key_auth_boundary_is_explicit_in_openapi() -> None:
+    schema = app.openapi()
+    security_schemes = schema["components"]["securitySchemes"]
+    api_key_schemes = {
+        name: value
+        for name, value in security_schemes.items()
+        if value.get("type") == "apiKey" and value.get("in") == "header"
+    }
+
+    assert api_key_schemes
+    assert any(
+        scheme.get("name") == "X-API-Key" for scheme in api_key_schemes.values()
+    )
+    protected_paths = [
+        path_item
+        for path, path_item in schema["paths"].items()
+        if "api-keys/public-auth-check" in path
+    ]
+    assert protected_paths
+    assert any(
+        operation.get("security")
+        for path_item in protected_paths
+        for operation in path_item.values()
+        if isinstance(operation, dict)
     )

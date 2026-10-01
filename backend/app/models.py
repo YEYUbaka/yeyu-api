@@ -58,6 +58,7 @@ class User(UserBase, table=True):
         sa_type=DateTime(timezone=True),  # type: ignore
     )
     items: list[Item] = Relationship(back_populates="owner", cascade_delete=True)
+    api_keys: list[ApiKey] = Relationship(back_populates="user", cascade_delete=True)
 
 
 # Properties to return via API, id is always required
@@ -199,6 +200,41 @@ class PasswordResetToken(SQLModel, table=True):
     )
 
 
+class ApiKey(SQLModel, table=True):
+    """A user-owned API credential; the raw secret is never a model field."""
+
+    __tablename__ = "api_key"
+    __table_args__ = (
+        UniqueConstraint(
+            "key_hash",
+            "hash_version",
+            name="uq_api_key_key_hash_version",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    prefix: str = Field(max_length=32, index=True, nullable=False)
+    key_hash: str = Field(max_length=64, index=True, nullable=False)
+    hash_version: int = Field(default=1, nullable=False)
+    label: str | None = Field(default=None, max_length=100)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    last_used_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    revoked_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    user: User | None = Relationship(back_populates="api_keys")
+
+
 class ApiDefinition(SQLModel, table=True):
     """Curated API metadata; execution is owned by a fixed adapter name."""
 
@@ -240,6 +276,47 @@ class ApiDefinition(SQLModel, table=True):
     provider_ref: str | None = Field(default=None, max_length=255)
     cache_rules: dict[str, object] = Field(
         default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ApiPolicy(SQLModel, table=True):
+    """Database-backed policy defaults consumed by the future quota layer."""
+
+    __tablename__ = "api_policy"
+    __table_args__ = (
+        UniqueConstraint(
+            "api_definition_id",
+            name="uq_api_policy_api_definition_id",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    api_definition_id: uuid.UUID = Field(
+        foreign_key="api_definition.id", nullable=False, index=True
+    )
+    user_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", index=True
+    )
+    api_key_id: uuid.UUID | None = Field(
+        default=None, foreign_key="api_key.id", index=True
+    )
+    enabled: bool = Field(default=True, nullable=False)
+    minute_limit: int = Field(default=60, nullable=False)
+    ip_minute_limit: int = Field(default=60, nullable=False)
+    daily_limit: int = Field(default=1000, nullable=False)
+    concurrency_limit: int = Field(default=1, nullable=False)
+    weight: int = Field(default=1, nullable=False)
+    allowed_ips: list[str] = Field(
+        default_factory=list,
         sa_column=Column(JSON, nullable=False),
     )
     created_at: datetime | None = Field(
