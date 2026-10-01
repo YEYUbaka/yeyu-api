@@ -159,7 +159,9 @@ function Login() {
               Continue with GitHub
             </a>
             {oauthError ? (
-              <p className="text-center text-sm text-destructive">{oauthError}</p>
+              <p className="text-center text-sm text-destructive">
+                {oauthError}
+              </p>
             ) : null}
           </div>
 

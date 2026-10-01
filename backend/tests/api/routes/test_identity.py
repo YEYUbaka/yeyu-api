@@ -3,6 +3,7 @@ from __future__ import annotations
 import secrets
 from collections.abc import Generator
 from datetime import timedelta
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -14,6 +15,12 @@ from app.core.config import settings
 from app.core.security import create_access_token, get_password_hash
 from app.main import app
 from app.models import User
+from app.services.github_oauth import OAuthConfigurationError, OAuthProviderError
+from app.services.identity import (
+    IdentityConflict,
+    InvalidVerificationToken,
+    RateLimitExceeded,
+)
 
 
 @pytest.fixture
@@ -203,3 +210,192 @@ def test_admin_email_change_resets_verification_and_requests_email(
     assert response.status_code == 200
     assert response.json()["email_verified"] is False
     assert requested == [user.id]
+
+
+def test_identity_routes_cover_rate_limit_and_email_verification_paths(
+    monkeypatch: pytest.MonkeyPatch,
+    identity_client: tuple[TestClient, Session],
+) -> None:
+    client, session = identity_client
+    monkeypatch.setattr(
+        "app.api.routes.login.RedisRateLimiter.check",
+        lambda _self, **_kwargs: None,
+    )
+    user = User(
+        email=f"{secrets.token_hex(12)}@example.com",
+        hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+        email_verified=False,
+    )
+    session.add(user)
+    session.commit()
+    requested: list[object] = []
+    monkeypatch.setattr(
+        "app.api.routes.login.EmailVerificationService.request",
+        lambda self, user_id: requested.append(user_id),
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/auth/request-email-verification",
+        json={"email": str(user.email)},
+    )
+    assert response.status_code == 202
+    assert requested == [user.id]
+
+    monkeypatch.setattr(
+        "app.api.routes.login.RedisRateLimiter.check",
+        lambda _self, **_kwargs: (_ for _ in ()).throw(RateLimitExceeded()),
+    )
+    response = client.post(
+        f"{settings.API_V1_STR}/auth/request-password-reset",
+        json={"email": str(user.email)},
+    )
+    assert response.status_code == 429
+
+
+def test_login_rejects_inactive_user(
+    identity_client: tuple[TestClient, Session],
+) -> None:
+    client, session = identity_client
+    password = secrets.token_urlsafe(24)
+    user = User(
+        email=f"{secrets.token_hex(12)}@example.com",
+        hashed_password=get_password_hash(password),
+        is_active=False,
+    )
+    session.add(user)
+    session.commit()
+
+    response = client.post(
+        f"{settings.API_V1_STR}/login/access-token",
+        data={"username": str(user.email), "password": password},
+    )
+    assert response.status_code == 400
+    assert response.json()["detail"] == "Inactive user"
+
+
+def test_github_routes_map_provider_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    identity_client: tuple[TestClient, Session],
+) -> None:
+    client, _ = identity_client
+    monkeypatch.setattr(
+        "app.api.routes.login.RedisRateLimiter.check",
+        lambda _self, **_kwargs: None,
+    )
+
+    monkeypatch.setattr(
+        "app.api.routes.login.GitHubOAuthService.start",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OAuthConfigurationError()),
+    )
+    response = client.get(f"{settings.API_V1_STR}/auth/github")
+    assert response.status_code == 503
+
+    monkeypatch.setattr(
+        "app.api.routes.login.GitHubOAuthService.callback",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(IdentityConflict()),
+    )
+    response = client.get(f"{settings.API_V1_STR}/auth/github/callback")
+    assert response.status_code == 409
+
+    monkeypatch.setattr(
+        "app.api.routes.login.GitHubOAuthService.callback",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OAuthProviderError()),
+    )
+    response = client.get(f"{settings.API_V1_STR}/auth/github/callback")
+    assert response.status_code == 502
+
+
+def test_reset_password_maps_invalid_and_inactive_users(
+    monkeypatch: pytest.MonkeyPatch,
+    identity_client: tuple[TestClient, Session],
+) -> None:
+    client, session = identity_client
+    monkeypatch.setattr(
+        "app.api.routes.login.PasswordResetService.consume_token",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(InvalidVerificationToken()),
+    )
+    monkeypatch.setattr(
+        "app.api.routes.login.verify_password_reset_token",
+        lambda **_kwargs: None,
+    )
+    response = client.post(
+        f"{settings.API_V1_STR}/reset-password/",
+        json={"token": "invalid", "new_password": "NewPassword123!"},
+    )
+    assert response.status_code == 400
+
+    monkeypatch.setattr(
+        "app.api.routes.login.verify_password_reset_token",
+        lambda **_kwargs: "legacy@example.com",
+    )
+    monkeypatch.setattr(
+        "app.api.routes.login.PasswordResetService.consume_legacy_token",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(InvalidVerificationToken()),
+    )
+    response = client.post(
+        f"{settings.API_V1_STR}/reset-password/",
+        json={"token": "legacy", "new_password": "NewPassword123!"},
+    )
+    assert response.status_code == 400
+
+    monkeypatch.setattr(
+        "app.api.routes.login.PasswordResetService.consume_token",
+        lambda *_args, **_kwargs: uuid4(),
+    )
+    response = client.post(
+        f"{settings.API_V1_STR}/reset-password/",
+        json={"token": "valid-looking", "new_password": "NewPassword123!"},
+    )
+    assert response.status_code == 400
+
+    inactive = User(
+        email=f"{secrets.token_hex(12)}@example.com",
+        hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+        is_active=False,
+    )
+    session.add(inactive)
+    session.commit()
+    monkeypatch.setattr(
+        "app.api.routes.login.PasswordResetService.consume_token",
+        lambda *_args, **_kwargs: inactive.id,
+    )
+    response = client.post(
+        f"{settings.API_V1_STR}/reset-password/",
+        json={"token": "inactive", "new_password": "NewPassword123!"},
+    )
+    assert response.status_code == 400
+
+
+def test_superuser_can_render_password_recovery_html(
+    identity_client: tuple[TestClient, Session],
+) -> None:
+    client, session = identity_client
+    admin = User(
+        email=f"{secrets.token_hex(12)}@example.com",
+        hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+        is_superuser=True,
+    )
+    user = User(
+        email=f"{secrets.token_hex(12)}@example.com",
+        hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+    )
+    session.add(admin)
+    session.add(user)
+    session.commit()
+    session.refresh(admin)
+    admin_token = create_access_token(
+        admin.id, expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/password-recovery-html-content/{user.email}",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 200
+    assert response.headers["x-email-subject"]
+
+    response = client.post(
+        f"{settings.API_V1_STR}/password-recovery-html-content/missing@example.com",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert response.status_code == 404
