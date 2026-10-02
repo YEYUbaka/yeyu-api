@@ -1,4 +1,6 @@
 from collections.abc import Generator
+from functools import lru_cache
+from ipaddress import IPv4Address, IPv6Address, ip_address
 from typing import Annotated
 from uuid import UUID, uuid4
 
@@ -16,6 +18,8 @@ from app.core.db import engine
 from app.models import TokenPayload, User
 from app.schemas.api_keys import ApiErrorResponse, ApiKeyPrincipal
 from app.services.api_keys import ApiKeyService
+from app.services.execution.runner import ApiRunner
+from app.services.redis import RedisStore
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token",
@@ -32,6 +36,59 @@ SessionDep = Annotated[Session, Depends(get_db)]
 TokenDep = Annotated[str | None, Depends(reusable_oauth2)]
 
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def get_client_ip(request: Request) -> IPv4Address | IPv6Address:
+    """Return the direct peer address without trusting forwarding headers."""
+
+    client = request.client
+    if client is None or not client.host:
+        raise ApiError(400, "CLIENT_IP_UNAVAILABLE", "Client IP is unavailable")
+    try:
+        return ip_address(client.host)
+    except ValueError as exc:
+        raise ApiError(400, "CLIENT_IP_UNAVAILABLE", "Client IP is invalid") from exc
+
+
+ClientIpDep = Annotated[
+    IPv4Address | IPv6Address, Depends(get_client_ip)
+]
+
+
+@lru_cache(maxsize=1)
+def get_redis_store() -> RedisStore:
+    """Return the process-local Redis primitive used by quota boundaries."""
+
+    return RedisStore()
+
+
+@lru_cache(maxsize=1)
+def get_api_runner() -> ApiRunner:
+    """Return one bounded executor per application process."""
+
+    return ApiRunner()
+
+
+def close_api_runner() -> None:
+    if get_api_runner.cache_info().currsize == 0:
+        return
+    runner = get_api_runner()
+    try:
+        runner.close()
+    finally:
+        get_api_runner.cache_clear()
+
+
+def close_redis_store() -> None:
+    if get_redis_store.cache_info().currsize == 0:
+        return
+    store = get_redis_store()
+    try:
+        close = getattr(store.client, "close", None)
+        if callable(close):
+            close()
+    finally:
+        get_redis_store.cache_clear()
 
 
 class ApiError(Exception):
@@ -101,6 +158,8 @@ def get_api_key_principal(
     del request
     if not raw_key:
         raise ApiError(401, "API_KEY_REQUIRED", "API key is required")
+    if len(raw_key.encode("utf-8")) > 256:
+        raise ApiError(401, "API_KEY_INVALID", "API key is invalid")
     principal = ApiKeyService(session).authenticate(raw_key)
     if principal is None:
         raise ApiError(401, "API_KEY_INVALID", "API key is invalid")

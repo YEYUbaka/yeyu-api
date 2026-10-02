@@ -8,6 +8,7 @@ from app.api.routes import (
     items,
     login,
     private,
+    public_api,
     users,
     utils,
 )
@@ -19,6 +20,7 @@ api_router.include_router(users.router)
 api_router.include_router(utils.router)
 api_router.include_router(items.router)
 api_router.include_router(catalog.router)
+api_router.include_router(public_api.router)
 api_router.include_router(admin_catalog.router)
 api_router.include_router(api_keys.router)
 api_router.include_router(admin_policies.router)
