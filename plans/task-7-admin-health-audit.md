@@ -2,7 +2,7 @@
 
 ## 0. 状态与边界
 
-- 状态：待独立子代理审查，审查通过后执行。
+- 状态：已实施，独立代码复审通过；待提交并推送。
 - 项目根目录：E:\AI_projects\yeyu-api。
 - 本阶段不修改 E:\AI_projects\yeyubakahome_Web，不访问或修改 new.api.yeyubaka.top，不执行 DNS、Nginx、证书、服务器或生产凭据变更。
 - 本阶段不引入任意 URL、开放代理、任意第三方上游或试验池中的真实 Secret。
