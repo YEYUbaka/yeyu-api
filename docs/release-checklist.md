@@ -27,7 +27,8 @@ verified 只代表该条目在写明环境中真实完成，不代表整个平�
 | 后端 lint/compile | verified | Windows；conda env yeyu-api | 6845ea5af26d7908259f2bc28786a12f9ce5cf30 | 2026-10-02T20:33:05+08:00 | ruff check；compileall | All checks passed；compileall exit 0 | E:\AI_projects\yeyu-api\plans\verification\task-8-implementation-evidence.md | 仅本地检查 | 回退未通过的代码提交 |
 | 前端 TypeScript/格式检查 | verified | Windows；pnpm | 6845ea5af26d7908259f2bc28786a12f9ce5cf30 | 2026-10-02T20:33:05+08:00 | pnpm exec tsc；pnpm exec biome check | tsc exit 0；Biome Checked 82 files，无修复 | E:\AI_projects\yeyu-api\plans\verification\task-8-implementation-evidence.md | 生产构建仍未通过 | 保留前一可用前端提交 |
 | 前端生产构建 | blocked | Windows；pnpm；本机 SWC native binding 缺失 | 6845ea5af26d7908259f2bc28786a12f9ce5cf30 | 2026-10-02T20:33:05+08:00 | pnpm run build | 失败：缺少 swc.win32-x64-msvc.node，且报告 ERR_SWC_NATIVE_CACHE/DACL；不能宣称构建通过 | E:\AI_projects\yeyu-api\plans\verification\task-8-implementation-evidence.md | 修复本机依赖/DACL 后重跑；不修改业务代码绕过 | 不发布未构建版本 |
-| Docker Compose 与容器健康 | blocked | Windows；Docker CLI 当前不可用 | 6845ea5af26d7908259f2bc28786a12f9ce5cf30 | 2026-10-02T20:33:05+08:00 | docker version；后续 compose config/up/health | `docker` 不是可识别命令；本轮未执行容器验证 | E:\AI_projects\yeyu-api\plans\verification\task-8-implementation-evidence.md | 安装/启用隔离 Docker 后执行；负责人：环境维护者 | 仅清理本 Task 隔离 Compose 资源 |
+| Docker Compose 与容器健康 | blocked | Windows；Docker CLI 29.8.2 已安装到 E 盘，但本机 daemon/Compose 插件不可用 | 6845ea5af26d7908259f2bc28786a12f9ce5cf30 | 2026-10-02T21:08:11+08:00 | `E:\AI_projects\tools\docker-cli\bin\docker.exe --version`；通过 `docker -H ssh://root@yeyuhome info` 只读检查远程 Engine；后续本机 compose config/up/health 与真实隔离依赖验证 | 本机 CLI 版本通过；远程 Engine 只读连接通过；本机默认 Docker daemon 不存在，Compose 插件未安装，未执行本地容器验证 | E:\AI_projects\yeyu-api\plans\verification\docker-server-preflight-2026-10-02.md | 安装/启用隔离 Docker Engine 与 Compose 后执行；负责人：环境维护者 | 仅清理本 Task 隔离 Compose 资源 |
+| 目标服务器资源与部署前置条件 | blocked | `yeyuhome`；Ubuntu 26.04；Docker 29.1.3/Compose 2.40.3；只读 preflight | 未提交 | 2026-10-02T21:08:13+08:00 | SSH 只读检查 CPU、内存、磁盘、Docker、容器、端口、Nginx、DNS；未改任何配置 | 2 vCPU、3.4 GiB 内存、available 约 1.4 GiB、根盘可用约 26 GiB；80/443 已被现有 Nginx 占用；无 `api.yeyubaka.top` 独立 vhost；不适合不加约束直接上线完整生产栈 | E:\AI_projects\yeyu-api\plans\verification\docker-server-preflight-2026-10-02.md | 优先升级到至少 4 vCPU/8 GiB；或先设计受控灰度并完成资源上限、预构建镜像、独立 vhost、DNS、凭据和回滚确认 | 不执行生产变更；若获确认后失败，恢复独立 vhost/版本并保留既有服务不动 |
 | /health 与 /ready | not_verified | 本地 fake/依赖隔离 | 未提交 | 2026-10-02 Asia/Hong_Kong | TestClient/容器 endpoint 检查 | 本地接口契约可测；未代表生产就绪 | E:\AI_projects\yeyu-api\plans\ | 需要容器和真实依赖环境 | 停止本 Task 版本并切回上一版本 |
 | 邮箱注册、验证、密码重置 | blocked | 未提供 SMTP 凭据 | 未提交 | 2026-10-02 Asia/Hong_Kong | 使用测试邮箱完成注册、验证、重置 | 未执行；缺 SMTP 与可控测试邮箱 | E:\AI_projects\yeyu-api\plans\ | 由项目运营者提供并确认 SMTP/测试邮箱；不把凭据写入仓库 | 撤销测试账号/回滚应用版本 |
 | GitHub OAuth 与身份绑定 | blocked | 未提供 OAuth Client/Secret 和回调配置 | 未提交 | 2026-10-02 Asia/Hong_Kong | 完成授权、回调、绑定和解绑验证 | 未执行；不替用户注册或接受协议 | E:\AI_projects\yeyu-api\plans\ | 由项目运营者配置 Secret 文件并确认回调域名 | 删除测试授权关联，切回上一版本 |
@@ -43,6 +44,6 @@ verified 只代表该条目在写明环境中真实完成，不代表整个平�
 
 ## 3. 发布门禁
 
-当前结论：不可发布/待验证。前端生产构建、Docker、SMTP、GitHub OAuth、DNS/HTTPS、真实 PostgreSQL/Redis 和线上验收仍非 verified；候选外部接口也没有公开再分发授权。任何人不得仅凭局部 focused tests、/health 或静态检查宣布上线。
+当前结论：不可发布/待验证。前端生产构建、本机 Docker Compose、SMTP、GitHub OAuth、DNS/HTTPS、真实 PostgreSQL/Redis、目标服务器资源适配和线上验收仍非 verified；候选外部接口也没有公开再分发授权。任何人不得仅凭局部 focused tests、/health、远程 Docker 只读连通或静态检查宣布上线。
 
 正式发布前必须把每个必需项的未提交占位替换为真实 commit SHA、带时区时间、命令/人工步骤、输出和证据位置。缺少外部凭据时必须保留 blocked，不得代替用户注册或接受协议。
