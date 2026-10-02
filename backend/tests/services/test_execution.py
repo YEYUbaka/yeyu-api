@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import math
 import threading
 import time as time_module
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from ipaddress import ip_address
 from uuid import UUID
@@ -12,6 +13,8 @@ from uuid import UUID
 import pytest
 from pydantic import ValidationError
 
+import app.services.execution.adapters.content as content_module
+import app.services.execution.runner as runner_module
 from app.services.execution.adapters.content import AllowlistedHttpAdapter
 from app.services.execution.models import (
     AdapterResult,
@@ -24,6 +27,8 @@ from app.services.execution.models import (
     ResourceLimitExceeded,
     UnsafeTarget,
     UpstreamError,
+    finite_json_bytes,
+    validate_finite_json_mapping,
 )
 from app.services.execution.registry import AdapterRegistry, UnknownApiSlug
 from app.services.execution.runner import ApiRunner
@@ -267,18 +272,21 @@ def _approved_http_adapter(
     max_response_bytes: int = 4096,
     allow_redirects: bool = False,
     max_retries: int = 1,
+    max_redirects: int = 3,
     endpoint: str = "https://approved.example/data",
+    allowed_params: Mapping[str, object] | Iterable[str] | None = None,
 ) -> AllowlistedHttpAdapter:
     return AllowlistedHttpAdapter(
         endpoint=endpoint,
         allowed_hosts={"approved.example"},
         provider_ref="test-provider",
-        allowed_params={"q": str},
+        allowed_params=allowed_params if allowed_params is not None else {"q": str},
         http_client=client,
         resolver=resolver,
         max_response_bytes=max_response_bytes,
         allow_redirects=allow_redirects,
         max_retries=max_retries,
+        max_redirects=max_redirects,
     )
 
 
@@ -775,3 +783,642 @@ def test_api_response_is_strict_but_keeps_mapping_compatibility() -> None:
 
 def test_default_registry_does_not_register_content_provider() -> None:
     assert AdapterRegistry().slugs() == ("time", "uuid")
+
+
+def test_content_helpers_fail_closed_without_network(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(UnsafeTarget):
+        content_module._normalize_host("   ")
+    with pytest.raises(UnsafeTarget):
+        content_module._normalize_host("\ud800")
+    assert content_module._path_is_safe("/safe/path") is True
+    assert content_module._path_is_safe("/safe/../path") is False
+    assert content_module._path_is_safe("/safe\\path") is False
+
+    monkeypatch.setattr(
+        content_module.socket,
+        "getaddrinfo",
+        lambda host, port, type: [(None, None, None, None, ("93.184.216.34", port))],
+    )
+    assert content_module._default_resolver("approved.example", 443) == [
+        "93.184.216.34"
+    ]
+
+    def raise_os_error(*_args: object, **_kwargs: object) -> None:
+        raise OSError("resolver unavailable")
+
+    monkeypatch.setattr(content_module.socket, "getaddrinfo", raise_os_error)
+    with pytest.raises(UpstreamError):
+        content_module._default_resolver("approved.example", 443)
+
+
+def test_content_response_close_paths_do_not_leak_details() -> None:
+    class RaisingClose:
+        def close(self) -> None:
+            raise RuntimeError("close failed")
+
+    class NoClose:
+        pass
+
+    class RaisingAclose:
+        async def aclose(self) -> None:
+            raise RuntimeError("async close failed")
+
+    class ValueAclose:
+        def aclose(self) -> object:
+            return object()
+
+    class RaisingAcloseCall:
+        def aclose(self) -> object:
+            raise RuntimeError("async close call failed")
+
+    content_module._close_response(RaisingClose())
+    content_module._close_response(NoClose())
+    content_module._close_response(RaisingAclose())
+    content_module._close_response(ValueAclose())
+    content_module._close_response(RaisingAcloseCall())
+
+    class RunningLoopAclose:
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def aclose(self) -> None:
+            self.closed = True
+
+    response = RunningLoopAclose()
+
+    async def close_from_loop() -> None:
+        content_module._close_response(response)
+
+    asyncio.run(close_from_loop())
+    assert response.closed is True
+
+
+def test_content_adapter_rejects_invalid_configuration() -> None:
+    defaults: dict[str, object] = {
+        "endpoint": "https://approved.example/data",
+        "allowed_hosts": {"approved.example"},
+        "provider_ref": "test-provider",
+        "resolver": _public_resolver,
+    }
+
+    def build(**overrides: object) -> AllowlistedHttpAdapter:
+        values = {**defaults, **overrides}
+        return AllowlistedHttpAdapter(**values)  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError):
+        build(http_client=FakeHttpClient([]), client=FakeHttpClient([]))
+    with pytest.raises(ValueError):
+        build(resolver=_public_resolver, dns_resolver=_public_resolver)
+    with pytest.raises(ValueError):
+        build(provider_ref="")
+    with pytest.raises(ValueError):
+        build(allowed_hosts="approved.example")
+    with pytest.raises(ValueError):
+        build(allowed_hosts=set())
+    with pytest.raises(UnsafeTarget):
+        build(endpoint="https://other.example/data")
+    with pytest.raises(UnsafeTarget):
+        build(endpoint="https://approved.example:bad/data")
+    with pytest.raises(UnsafeTarget):
+        build(endpoint="https://approved.example/a\\b")
+    with pytest.raises(UnsafeTarget):
+        build(endpoint="https://approved.example/%2e%2e/data")
+    with pytest.raises(ValueError):
+        build(max_response_bytes=0)
+    with pytest.raises(ValueError):
+        build(max_retries=True)
+    with pytest.raises(ValueError):
+        build(max_retries=content_module.MAX_RETRIES + 1)
+    with pytest.raises(ValueError):
+        build(max_redirects=True)
+    with pytest.raises(ValueError):
+        build(max_redirects=content_module.MAX_REDIRECTS + 1)
+
+    explicit_port = build(endpoint="https://approved.example:8443/data")
+    assert explicit_port.endpoint == "https://approved.example:8443/data"
+
+
+def test_content_endpoint_parser_and_schema_validation() -> None:
+    for endpoint in (
+        "",
+        "https://[bad/data",
+        "http://approved.example/data",
+        "https://user:pass@approved.example/data",
+        "https://approved.example/data?query=1",
+    ):
+        with pytest.raises((ValueError, UnsafeTarget)):
+            AllowlistedHttpAdapter(
+                endpoint=endpoint,
+                allowed_hosts={"approved.example"},
+                provider_ref="test-provider",
+                resolver=_public_resolver,
+            )
+
+    with pytest.raises(ValueError):
+        _approved_http_adapter(FakeHttpClient([]), allowed_params={"url": str})
+    with pytest.raises(ValueError):
+        _approved_http_adapter(FakeHttpClient([]), allowed_params={"q": 1})
+    with pytest.raises(ValueError):
+        _approved_http_adapter(
+            FakeHttpClient([]),
+            allowed_params={f"q{i}": str for i in range(33)},
+        )
+
+    iterable_schema = _approved_http_adapter(FakeHttpClient([]), allowed_params=["q"])
+    assert iterable_schema.validate_params({"q": "ok"}) == {"q": "ok"}
+    with pytest.raises(InvalidParameters):
+        iterable_schema.validate_params({"unknown": "value"})
+    with pytest.raises(InvalidParameters):
+        iterable_schema.validate_params({"q": {"nested": True}})
+    with pytest.raises(InvalidParameters):
+        _approved_http_adapter(
+            FakeHttpClient([]),
+            allowed_params={"q": (str, int)},
+        ).validate_params({"q": True})
+    with pytest.raises(InvalidParameters):
+        _approved_http_adapter(
+            FakeHttpClient([]),
+            allowed_params={"q": dict},
+        ).validate_params({"q": {"nested": True}})
+
+
+def test_content_target_validation_covers_dns_and_redirect_failures() -> None:
+    adapter = _approved_http_adapter(FakeHttpClient([]))
+    with pytest.raises(UnsafeTarget):
+        adapter._validate_target("http://approved.example/data", initial=True)
+    with pytest.raises(UnsafeTarget):
+        adapter._validate_target("https://approved.example:bad/data", initial=True)
+    with pytest.raises(RedirectRejected):
+        adapter._validate_target("https://approved.example:bad/data", initial=False)
+    with pytest.raises(RedirectRejected):
+        adapter._validate_target("https://user:pass@approved.example/data", initial=False)
+    with pytest.raises(RedirectRejected):
+        adapter._validate_target("https://approved.example/../data", initial=False)
+    with pytest.raises(RedirectRejected):
+        adapter._validate_target("https://other.example/data", initial=False)
+
+    literal = AllowlistedHttpAdapter(
+        endpoint="https://127.0.0.1/data",
+        allowed_hosts={"127.0.0.1"},
+        provider_ref="test-provider",
+        resolver=lambda _host, _port: ["93.184.216.34"],
+        http_client=FakeHttpClient([]),
+    )
+    with pytest.raises(UnsafeTarget):
+        literal.execute(_context(), {})
+
+    unsafe_host = AllowlistedHttpAdapter(
+        endpoint="https://localhost/data",
+        allowed_hosts={"localhost"},
+        provider_ref="test-provider",
+        resolver=lambda _host, _port: ["93.184.216.34"],
+        http_client=FakeHttpClient([]),
+    )
+    with pytest.raises(UnsafeTarget):
+        unsafe_host.execute(_context(), {})
+    with pytest.raises(RedirectRejected):
+        unsafe_host._validate_target("https://localhost/data", initial=False)
+
+    with pytest.raises(UnsafeTarget):
+        _approved_http_adapter(
+            FakeHttpClient([]),
+            resolver=lambda _host, _port: (_ for _ in ()).throw(UnsafeTarget("blocked")),
+        ).execute(_context(), {})
+    with pytest.raises(UpstreamError):
+        _approved_http_adapter(
+            FakeHttpClient([]),
+            resolver=lambda _host, _port: (_ for _ in ()).throw(RuntimeError("dns")),
+        ).execute(_context(), {})
+    with pytest.raises(UpstreamError):
+        _approved_http_adapter(
+            FakeHttpClient([]),
+            resolver=lambda _host, _port: [],
+        ).execute(_context(), {})
+    with pytest.raises(UnsafeTarget):
+        _approved_http_adapter(
+            FakeHttpClient([]),
+            resolver=lambda _host, _port: ["not-an-ip"],
+        ).execute(_context(), {})
+    duplicate_client = FakeHttpClient([FakeResponse()])
+    duplicate = _approved_http_adapter(
+        duplicate_client,
+        resolver=lambda _host, _port: ["93.184.216.34", "93.184.216.34"],
+    )
+    duplicate.execute(_context(), {})
+    assert duplicate_client.pinned_calls[0]["resolved_addresses"] == ("93.184.216.34",)
+    assert content_module._safe_address("not-an-ip") is False
+
+
+def test_content_adapter_handles_response_lifecycle_and_status_edges() -> None:
+    no_client = _approved_http_adapter(FakeHttpClient([]))
+    no_client._http_client = None
+    with pytest.raises(UpstreamError):
+        no_client.execute(_context(), {})
+
+    no_stream = FakeResponse()
+    no_stream.iter_bytes = None
+    with pytest.raises(UpstreamError):
+        _approved_http_adapter(FakeHttpClient([no_stream])).execute(_context(), {})
+    assert no_stream.closed is True
+
+    non_mapping_headers = FakeResponse()
+    non_mapping_headers.headers = []
+    assert _approved_http_adapter(FakeHttpClient([non_mapping_headers])).execute(
+        _context(), {}
+    ).data == {"ok": True}
+
+    for content_length, expected in (
+        ("not-a-number", UpstreamError),
+        ("-1", ResourceLimitExceeded),
+        ("4097", ResourceLimitExceeded),
+    ):
+        response = FakeResponse(headers={"content-length": content_length})
+        with pytest.raises(expected):
+            _approved_http_adapter(FakeHttpClient([response])).execute(_context(), {})
+        assert response.closed is True
+
+    invalid_chunk = FakeResponse(chunks=(object(),))  # type: ignore[arg-type]
+    with pytest.raises(UpstreamError):
+        _approved_http_adapter(FakeHttpClient([invalid_chunk])).execute(_context(), {})
+    assert invalid_chunk.closed is True
+
+    invalid_json = FakeResponse(body=b"{")
+    with pytest.raises(UpstreamError):
+        _approved_http_adapter(FakeHttpClient([invalid_json])).execute(_context(), {})
+    assert invalid_json.closed is True
+
+    non_finite_json = FakeResponse(body=b"NaN")
+    with pytest.raises(UpstreamError):
+        _approved_http_adapter(FakeHttpClient([non_finite_json])).execute(_context(), {})
+    assert non_finite_json.closed is True
+
+    response_with_bad_status = FakeResponse()
+    response_with_bad_status.status_code = "200"
+    with pytest.raises(UpstreamError):
+        _approved_http_adapter(FakeHttpClient([response_with_bad_status])).execute(
+            _context(), {}
+        )
+
+    no_location = FakeResponse(status_code=302, headers={"content-type": "text/plain"})
+    with pytest.raises(RedirectRejected):
+        _approved_http_adapter(
+            FakeHttpClient([no_location]),
+            allow_redirects=True,
+            max_retries=0,
+        ).execute(_context(), {})
+
+    redirect_limit = FakeResponse(
+        status_code=302,
+        headers={"location": "https://approved.example/data"},
+    )
+    with pytest.raises(RedirectRejected):
+        _approved_http_adapter(
+            FakeHttpClient([redirect_limit]),
+            allow_redirects=True,
+            max_redirects=0,
+        ).execute(_context(), {})
+
+    with pytest.raises(UpstreamError):
+        _approved_http_adapter(
+            FakeHttpClient([FakeResponse(status_code=404)]),
+            max_retries=0,
+        ).execute(_context(), {})
+
+    retry_client = FakeHttpClient([OSError("transient"), FakeResponse()])
+    assert _approved_http_adapter(retry_client, max_retries=1).execute(
+        _context(), {}
+    ).data == {"ok": True}
+
+    class TimeoutResponse(FakeResponse):
+        def iter_bytes(self):
+            raise TimeoutError("body timeout")
+            yield b"never"
+
+    class RuntimeErrorResponse(FakeResponse):
+        def iter_bytes(self):
+            raise RuntimeError("body failure")
+            yield b"never"
+
+    with pytest.raises(AdapterTimeout):
+        _approved_http_adapter(
+            FakeHttpClient([TimeoutResponse()]),
+            max_retries=0,
+        ).execute(_context(), {})
+    assert _approved_http_adapter(
+        FakeHttpClient([TimeoutResponse(), FakeResponse()]),
+        max_retries=1,
+    ).execute(_context(), {}).data == {"ok": True}
+    with pytest.raises(UpstreamError):
+        _approved_http_adapter(FakeHttpClient([RuntimeErrorResponse()])).execute(
+            _context(), {}
+        )
+
+
+def test_content_adapter_enforces_deadline_and_explicit_ipv6_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    clock = iter((100.0, 100.01))
+    monkeypatch.setattr(content_module, "monotonic", lambda: next(clock))
+    with pytest.raises(AdapterTimeout):
+        _approved_http_adapter(FakeHttpClient([])).execute(
+            _context(timeout_ms=1), {}
+        )
+
+    monkeypatch.setattr(content_module, "monotonic", time_module.monotonic)
+    client = FakeHttpClient([FakeResponse()])
+    ipv6 = "2606:4700:4700::1111"
+    adapter = AllowlistedHttpAdapter(
+        endpoint=f"https://[{ipv6}]/data",
+        allowed_hosts={ipv6},
+        provider_ref="test-provider",
+        resolver=lambda _host, _port: [ipv6],
+        http_client=client,
+    )
+    assert adapter.endpoint == f"https://[{ipv6}]/data"
+    assert adapter.execute(_context(), {}).data == {"ok": True}
+
+
+def test_runner_validates_worker_limits_and_closed_lifecycle() -> None:
+    for value in (True, 0, 65, "1"):
+        with pytest.raises(ValueError):
+            ApiRunner(max_workers=value)  # type: ignore[arg-type]
+
+    runner = ApiRunner(max_workers=1)
+    runner._release_slot(None)
+    runner.close()
+    runner.close()
+    runner.shutdown()
+    response = runner.run("time", _context(), {})
+    assert response.success is False
+    assert response.error["code"] == "UPSTREAM_ERROR"
+
+
+def test_runner_converts_submit_failures_and_deadline_exhaustion(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BrokenExecutor:
+        def submit(self, *_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("submit failed")
+
+        def shutdown(self, **_kwargs: object) -> None:
+            return None
+
+    broken = ApiRunner(max_workers=1)
+    broken._executor = BrokenExecutor()  # type: ignore[assignment]
+    response = broken.run("time", _context(), {})
+    assert response.success is False
+    assert response.error["code"] == "UPSTREAM_ERROR"
+    broken.close()
+
+    clock = iter((100.0, 100.01))
+    monkeypatch.setattr(runner_module, "monotonic", lambda: next(clock))
+    deadline = ApiRunner(max_workers=1)
+    response = deadline.run("time", _context(timeout_ms=1), {})
+    assert response.success is False
+    assert response.error["code"] == "UPSTREAM_TIMEOUT"
+    deadline.close()
+
+
+def test_runner_fails_closed_on_cache_errors_and_invalid_cached_payloads() -> None:
+    class ExplodingCache(CacheDouble):
+        def get_for(self, *_args: object, **_kwargs: object) -> object:
+            raise RuntimeError("cache read failed")
+
+        def stale_value_for(self, *_args: object, **_kwargs: object) -> object:
+            raise RuntimeError("cache stale read failed")
+
+        def set_for(self, *_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("cache write failed")
+
+    success_runner = ApiRunner(
+        registry=AdapterRegistry(overrides={"time": CountingAdapter()}),
+        cache=ExplodingCache(),
+    )
+    success = success_runner.run("time", _context(), {})
+    assert success.success is True
+    assert success.meta["stale_reason"] == "cache_unavailable"
+    success_runner.close()
+
+    timeout_runner = ApiRunner(
+        registry=AdapterRegistry(
+            overrides={"time": CountingAdapter(error=TimeoutError("timeout"))}
+        ),
+        cache=ExplodingCache(),
+    )
+    timeout = timeout_runner.run("time", _context(), {})
+    assert timeout.success is False
+    assert timeout.error["code"] == "UPSTREAM_TIMEOUT"
+    timeout_runner.close()
+
+    fresh_cache = CacheDouble()
+    fresh_cache.fresh[fresh_cache._key("time", {})] = object()
+    fresh_runner = ApiRunner(
+        registry=AdapterRegistry(overrides={"time": CountingAdapter()}),
+        cache=fresh_cache,
+    )
+    fresh = fresh_runner.run("time", _context(), {})
+    assert fresh.success is True
+    assert fresh.meta["cache_hit"] is False
+    fresh_runner.close()
+
+    stale_cache = CacheDouble()
+    stale_cache.stale[stale_cache._key("time", {})] = (
+        object(),
+        NOW - timedelta(seconds=1),
+        NOW + timedelta(seconds=30),
+    )
+    stale_runner = ApiRunner(
+        registry=AdapterRegistry(
+            overrides={"time": CountingAdapter(error=TimeoutError("timeout"))}
+        ),
+        cache=stale_cache,
+    )
+    stale = stale_runner.run("time", _context(), {})
+    assert stale.success is False
+    assert stale.error["code"] == "UPSTREAM_TIMEOUT"
+    stale_runner.close()
+
+
+def test_runner_rejects_bad_validator_and_adapter_results() -> None:
+    class NonMappingValidator(CountingAdapter):
+        def validate_params(self, params: Mapping[str, object]) -> object:
+            return ["not a mapping"]
+
+    class ExplodingValidator(CountingAdapter):
+        def validate_params(self, params: Mapping[str, object]) -> dict[str, object]:
+            raise RuntimeError("validator failed")
+
+    for adapter in (NonMappingValidator(), ExplodingValidator()):
+        runner = ApiRunner(registry=AdapterRegistry(overrides={"time": adapter}))
+        response = runner.run("time", _context(), {})
+        assert response.success is False
+        assert response.error["code"] == "INVALID_PARAMETERS"
+        runner.close()
+
+    class InvalidResultAdapter(ApiAdapter):
+        adapter_name = "builtin-tools"
+
+        def execute(self, context: ExecutionContext, params: Mapping[str, object]) -> object:
+            return object()
+
+    class ValueErrorAdapter(ApiAdapter):
+        adapter_name = "builtin-tools"
+
+        def execute(self, context: ExecutionContext, params: Mapping[str, object]) -> AdapterResult:
+            raise ValueError("adapter failed")
+
+    for adapter in (InvalidResultAdapter(), ValueErrorAdapter()):
+        runner = ApiRunner(registry=AdapterRegistry(overrides={"time": adapter}))
+        response = runner.run("time", _context(), {})
+        assert response.success is False
+        assert response.error["code"] == "UPSTREAM_ERROR"
+        runner.close()
+
+
+def test_json_boundaries_reject_nested_targets_and_resource_exhaustion() -> None:
+    class UnserializableMapping(Mapping[str, object]):
+        def __getitem__(self, key: str) -> object:
+            return {"value": 1}[key]
+
+        def __iter__(self):
+            return iter(("value",))
+
+        def __len__(self) -> int:
+            return 1
+
+    with pytest.raises(ValueError):
+        validate_finite_json_mapping({}, max_bytes=0)
+    with pytest.raises(InvalidParameters):
+        validate_finite_json_mapping({"": "value"})
+    with pytest.raises(InvalidParameters):
+        validate_finite_json_mapping({1: "value"})  # type: ignore[dict-item]
+    with pytest.raises(InvalidParameters):
+        validate_finite_json_mapping({"x": {1: "value"}})  # type: ignore[dict-item]
+    with pytest.raises(InvalidParameters):
+        validate_finite_json_mapping({"\x00key": "value"})
+    with pytest.raises(InvalidParameters):
+        validate_finite_json_mapping({"x\x00": "value"})
+
+    for value in (
+        "",
+        "\x00",
+        "https://evil.example",
+        "/absolute/path",
+        "\\absolute\\path",
+        "~/relative",
+        "~\\relative",
+        "C:\\relative",
+        "a/../b",
+    ):
+        with pytest.raises(InvalidParameters):
+            validate_finite_json_mapping({"x": value})
+    with pytest.raises(InvalidParameters):
+        validate_finite_json_mapping({"x": {"url": "not-used"}})
+    with pytest.raises(InvalidParameters):
+        validate_finite_json_mapping({"x": ["/not-a-path"]})
+    with pytest.raises(InvalidParameters):
+        validate_finite_json_mapping({"x": {"nested": object()}})
+    with pytest.raises(InvalidParameters):
+        validate_finite_json_mapping({"x": {"\x00nested": True}})
+    with pytest.raises(InvalidParameters):
+        validate_finite_json_mapping({"x": UnserializableMapping()})
+    with pytest.raises(ResourceLimitExceeded):
+        validate_finite_json_mapping({"x": [1] * 257})
+    with pytest.raises(ResourceLimitExceeded):
+        validate_finite_json_mapping({"x": {str(i): i for i in range(257)}})
+
+    nested: object = "leaf"
+    for _ in range(13):
+        nested = [nested]
+    with pytest.raises(ResourceLimitExceeded):
+        validate_finite_json_mapping({"x": nested})
+    with pytest.raises(ResourceLimitExceeded):
+        validate_finite_json_mapping({"x": "x" * 5000})
+    with pytest.raises(InvalidParameters):
+        finite_json_bytes(float("nan"), max_bytes=100)
+    with pytest.raises(UpstreamError):
+        finite_json_bytes(UnserializableMapping(), max_bytes=100)
+    with pytest.raises(ResourceLimitExceeded):
+        finite_json_bytes("x" * 101, max_bytes=100)
+    with pytest.raises(ValueError):
+        finite_json_bytes({}, max_bytes=0)
+    with pytest.raises(InvalidParameters):
+        validate_finite_json_mapping([])  # type: ignore[arg-type]
+
+
+def test_execution_context_and_result_validate_types_and_timezones() -> None:
+    valid = _context()
+    assert valid.now == NOW
+
+    for kwargs in (
+        {"request_id": ""},
+        {"api_slug": "TIME"},
+        {"api_key_id": ""},
+        {"user_id": ""},
+        {"client_ip": "not-an-ip"},
+        {"timeout_ms": True},
+        {"timeout_ms": 0},
+        {"now": datetime(2026, 10, 1, 12, 0, 0)},
+        {"now": "not-a-date"},
+    ):
+        values = {
+            "request_id": valid.request_id,
+            "api_slug": valid.api_slug,
+            "api_key_id": valid.api_key_id,
+            "user_id": valid.user_id,
+            "client_ip": valid.client_ip,
+            "timeout_ms": valid.timeout_ms,
+            "now": valid.now,
+        }
+        values.update(kwargs)
+        with pytest.raises(ValueError):
+            ExecutionContext(**values)  # type: ignore[arg-type]
+
+    with pytest.raises(InvalidParameters):
+        AdapterResult(data={}, meta=[])
+    with pytest.raises(ValueError):
+        AdapterResult(data={}, data_at=datetime(2026, 10, 1, 12, 0, 0))
+    with pytest.raises(NotImplementedError):
+        ApiAdapter().execute(valid, {})
+
+
+def test_api_response_rejects_unsafe_shapes_and_preserves_contract() -> None:
+    safe_meta = {"request_id": "req-test-001"}
+    invalid_errors = (
+        object(),
+        {"code": "X", "message": "ok", "request_id": 1},
+        {"code": "X", "message": "", "request_id": "req-test-001"},
+        {"code": "X", "message": "line\nfeed", "request_id": "req-test-001"},
+        {
+            "code": "X",
+            "message": "https://upstream.example/error",
+            "request_id": "req-test-001",
+        },
+        {"code": "X", "message": "x" * 1025, "request_id": "req-test-001"},
+    )
+    for error in invalid_errors:
+        with pytest.raises(ValidationError):
+            ApiResponse(success=False, data=None, error=error, meta=safe_meta)
+
+    with pytest.raises(ValidationError):
+        ApiResponse(success=False, data=None, error={"code": "X"}, meta=safe_meta)
+    with pytest.raises(ValidationError):
+        ApiResponse(
+            success=False,
+            data=None,
+            error={"code": "X", "message": "failed", "request_id": "req-test-001"},
+            meta={"Authorization": "redacted-test"},
+        )
+    with pytest.raises(ValidationError):
+        ApiResponse(success=False, data=None, error=None, meta=safe_meta)
+    with pytest.raises(ValidationError):
+        ApiResponse(
+            success=True,
+            data={},
+            error={"code": "X", "message": "failed", "request_id": "req-test-001"},
+            meta=safe_meta,
+        )
+    with pytest.raises(ValidationError):
+        ApiResponse(success=1, data={}, error=None, meta=safe_meta)
+    with pytest.raises(ValidationError):
+        ApiResponse(success=True, data={}, error=None, meta=[])

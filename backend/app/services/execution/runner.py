@@ -273,18 +273,13 @@ class ApiRunner:
         result: AdapterResult | None = None
         error: ExecutionError | None = None
         try:
-            result = self._run_adapter(adapter, context, safe_params)
-            if not isinstance(result, AdapterResult):
+            candidate = self._run_adapter(adapter, context, safe_params)
+            if not isinstance(candidate, AdapterResult):
                 raise UpstreamError("adapter returned an invalid result")
-            finite_json_bytes(result.data, max_bytes=adapter.max_response_bytes)
-        except FutureTimeout as exc:
-            error: ExecutionError = AdapterTimeout("adapter exceeded the execution context timeout")
-            error.__cause__ = exc
+            finite_json_bytes(candidate.data, max_bytes=adapter.max_response_bytes)
+            result = candidate
         except AdapterTimeout as exc:
             error = exc
-        except TimeoutError as exc:
-            error = AdapterTimeout("adapter timed out")
-            error.__cause__ = exc
         except ExecutionError as exc:
             error = exc
         except Exception as exc:

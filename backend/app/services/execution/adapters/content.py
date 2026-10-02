@@ -349,8 +349,6 @@ class AllowlistedHttpAdapter(ApiAdapter):
                 raise UnsafeTarget("upstream address is not allowed")
             if normalized_address not in validated:
                 validated.append(normalized_address)
-        if not validated:
-            raise UpstreamError("upstream DNS resolution returned no address")
         return tuple(validated)
 
     def _request(

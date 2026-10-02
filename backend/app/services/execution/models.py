@@ -159,6 +159,8 @@ def validate_finite_json_mapping(
         if not isinstance(key, str) or not key.strip():
             raise InvalidParameters("parameter names must be non-empty strings")
         normalized_key = key.strip()
+        if "\x00" in normalized_key:
+            raise InvalidParameters("parameter names contain an invalid character")
         if normalized_key.lower() in _UNSAFE_PARAMETER_KEYS:
             raise InvalidParameters("URL and path parameters are not accepted")
         _validate_json_value(value)
