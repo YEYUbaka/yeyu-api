@@ -1,8 +1,8 @@
 # 静态 API 资料册本地验证证据
 
-验证日期：2026-10-02（Asia/Hong_Kong）  
-项目：`E:\AI_projects\yeyu-api`  
-最终提交：`ab8f043a6197926346fdd8bc4ce6e54ce632567f`  
+验证日期：2026-10-02（Asia/Hong_Kong）
+项目：`E:\AI_projects\yeyu-api`
+验证对应的静态实现提交：`ab8f043a6197926346fdd8bc4ce6e54ce632567f`
 远程分支：`origin/main`
 
 ## 验证范围
