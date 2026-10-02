@@ -249,6 +249,27 @@ class ApiDefinition(SQLModel, table=True):
     __table_args__ = (
         UniqueConstraint("slug", name="uq_api_definition_slug"),
         CheckConstraint("auth_type = 'api_key'", name="ck_api_definition_auth_type"),
+        CheckConstraint(
+            "status IN ('trial', 'healthy', 'published', 'draft', 'disabled')",
+            name="ck_api_definition_status_allowed",
+        ),
+        CheckConstraint(
+            "adapter_name = 'builtin-tools'",
+            name="ck_api_definition_adapter_name_allowlist",
+        ),
+        CheckConstraint(
+            "provider_ref IS NULL OR provider_ref IN "
+            "('provider:internal-tools', 'builtin-tools:time', 'builtin-tools:uuid')",
+            name="ck_api_definition_provider_ref_allowlist",
+        ),
+        CheckConstraint(
+            "path LIKE '/%' AND path NOT LIKE '//%' "
+            "AND path NOT LIKE '%://%' AND path NOT LIKE '%?%' "
+            "AND path NOT LIKE '%#%' AND path NOT LIKE '%..%' "
+            "AND path NOT LIKE '%\\%' ESCAPE '!' "
+            "AND path NOT LIKE '%!%%' ESCAPE '!'",
+            name="ck_api_definition_path_internal",
+        ),
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
@@ -414,4 +435,32 @@ class CacheEntry(SQLModel, table=True):
     updated_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class AuditEvent(SQLModel, table=True):
+    """A redacted, durable record of an administrative operation."""
+
+    __tablename__ = "audit_event"
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    actor_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="user.id",
+        ondelete="SET NULL",
+    )
+    request_id: str | None = Field(default=None, max_length=128, index=True)
+    action: str = Field(max_length=64, nullable=False, index=True)
+    object_type: str = Field(max_length=64, nullable=False, index=True)
+    object_id: str = Field(max_length=128, nullable=False)
+    outcome: str = Field(max_length=32, nullable=False, index=True)
+    details: dict[str, object] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+        nullable=False,
+        index=True,
     )

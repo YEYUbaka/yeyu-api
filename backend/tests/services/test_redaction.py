@@ -24,6 +24,8 @@ def test_nested_metadata_is_redacted_and_bounded() -> None:
         {
             "safe": "kept",
             "password": "<NON_SECRET_PASSWORD_VALUE>",
+            "credential": "<NON_SECRET_CREDENTIAL_VALUE>",
+            "private_key": "<NON_SECRET_PRIVATE_KEY_VALUE>",
             "nested": {
                 "access_token": "<NON_SECRET_ACCESS_VALUE>",
                 "items": ["ok", "<NON_SECRET_LIST_VALUE>"],
@@ -34,8 +36,18 @@ def test_nested_metadata_is_redacted_and_bounded() -> None:
 
     assert safe["safe"] == "kept"
     assert safe["password"] == "[REDACTED]"
+    assert safe["credential"] == "[REDACTED]"
+    assert safe["private_key"] == "[REDACTED]"
     assert safe["nested"]["access_token"] == "[REDACTED]"  # type: ignore[index]
     assert safe["long"] == "[TRUNCATED]"
+
+
+def test_oversized_mapping_is_bounded_before_recursive_walk() -> None:
+    safe = RedactionService.sanitize_metadata(
+        {f"key-{index}": {"nested": "value"} for index in range(10_000)}
+    )
+
+    assert safe == {"[TRUNCATED]": "[TRUNCATED]"}
 
 
 def test_unknown_objects_are_not_stringified() -> None:

@@ -141,6 +141,12 @@ return removed
         except Exception as exc:
             raise RedisUnavailable from exc
 
+    def ping(self) -> bool:
+        try:
+            return self.client.ping() is True
+        except Exception:
+            return False
+
     def check_limits(
         self,
         *,

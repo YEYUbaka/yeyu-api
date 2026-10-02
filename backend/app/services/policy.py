@@ -158,7 +158,13 @@ class PolicyService:
         api = self._api(api_slug)
         return self._view(api, self._policy(api))
 
-    def upsert(self, api_slug: str, payload: PolicyUpdate) -> PolicyView:
+    def upsert(
+        self,
+        api_slug: str,
+        payload: PolicyUpdate,
+        *,
+        commit: bool = True,
+    ) -> PolicyView:
         api = self._api(api_slug)
         policy = self._policy(api)
         if policy is None:
@@ -169,11 +175,14 @@ class PolicyService:
         policy.updated_at = _now()
         self.session.add(policy)
         try:
-            self.session.commit()
+            self.session.flush()
+            if commit:
+                self.session.commit()
         except Exception:
             self.session.rollback()
             raise
-        self.session.refresh(policy)
+        if commit:
+            self.session.refresh(policy)
         return self._view(api, policy)
 
     @staticmethod

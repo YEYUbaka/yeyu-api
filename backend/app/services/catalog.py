@@ -153,7 +153,13 @@ class ApiCatalogService:
             raise CatalogNotFoundError
         return definition
 
-    def create(self, slug: str, payload: ApiDefinitionCreate) -> ApiDefinition:
+    def create(
+        self,
+        slug: str,
+        payload: ApiDefinitionCreate,
+        *,
+        commit: bool = True,
+    ) -> ApiDefinition:
         if self.session.exec(
             select(ApiDefinition).where(ApiDefinition.slug == slug)
         ).first():
@@ -167,14 +173,23 @@ class ApiCatalogService:
         )
         try:
             self.session.add(definition)
-            self.session.commit()
+            self.session.flush()
+            if commit:
+                self.session.commit()
         except IntegrityError as exc:
             self.session.rollback()
             raise CatalogConflictError from exc
-        self.session.refresh(definition)
+        if commit:
+            self.session.refresh(definition)
         return definition
 
-    def update(self, slug: str, payload: ApiDefinitionUpdate) -> ApiDefinition:
+    def update(
+        self,
+        slug: str,
+        payload: ApiDefinitionUpdate,
+        *,
+        commit: bool = True,
+    ) -> ApiDefinition:
         definition = self.get_admin(slug)
         data = payload.model_dump(exclude_unset=True)
         if "source" in data:
@@ -182,11 +197,15 @@ class ApiCatalogService:
         definition.sqlmodel_update(data)
         definition.updated_at = _now()
         self.session.add(definition)
-        self.session.commit()
-        self.session.refresh(definition)
+        self.session.flush()
+        if commit:
+            self.session.commit()
+            self.session.refresh(definition)
         return definition
 
-    def delete(self, slug: str) -> None:
+    def delete(self, slug: str, *, commit: bool = True) -> None:
         definition = self.get_admin(slug)
         self.session.delete(definition)
-        self.session.commit()
+        self.session.flush()
+        if commit:
+            self.session.commit()

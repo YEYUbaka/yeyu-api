@@ -10,6 +10,16 @@ from sqlmodel import SQLModel
 
 CATALOG_SLUG_PATTERN = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
 ALLOWED_ADAPTER_NAMES = frozenset({"builtin-tools"})
+ALLOWED_PROVIDER_REFS = frozenset(
+    {
+        "provider:internal-tools",
+        "builtin-tools:time",
+        "builtin-tools:uuid",
+    }
+)
+ALLOWED_STATUS_VALUES = frozenset(
+    {"trial", "healthy", "published", "draft", "disabled"}
+)
 
 
 def _validate_internal_path(value: str) -> str:
@@ -33,7 +43,11 @@ def _validate_provider_ref(value: str | None) -> str | None:
     if value is None:
         return None
     value = value.strip()
-    if not value or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}", value):
+    if (
+        not value
+        or value not in ALLOWED_PROVIDER_REFS
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}", value)
+    ):
         raise ValueError("provider_ref must be an internal reference")
     return value
 
@@ -62,6 +76,13 @@ def _validate_adapter_name(value: str) -> str:
     value = value.strip()
     if value not in ALLOWED_ADAPTER_NAMES:
         raise ValueError("adapter_name is not in the fixed adapter allowlist")
+    return value
+
+
+def _validate_status(value: str) -> str:
+    value = value.strip().casefold()
+    if value not in ALLOWED_STATUS_VALUES:
+        raise ValueError("status is not in the fixed status allowlist")
     return value
 
 
@@ -151,6 +172,11 @@ class ApiDefinitionCreate(SQLModel):
     def validate_provider_ref(cls, value: str | None) -> str | None:
         return _validate_provider_ref(value)
 
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        return _validate_status(value)
+
     @field_validator("adapter_name")
     @classmethod
     def validate_adapter_name(cls, value: str) -> str:
@@ -199,6 +225,11 @@ class ApiDefinitionUpdate(SQLModel):
     @classmethod
     def validate_provider_ref(cls, value: str | None) -> str | None:
         return _validate_provider_ref(value)
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        return _validate_status(value) if value is not None else None
 
     @field_validator("adapter_name")
     @classmethod

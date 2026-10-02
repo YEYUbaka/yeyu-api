@@ -215,15 +215,19 @@ def execute_tool(
     redis: Annotated[RedisStore, Depends(get_redis_store)],
     runner: Annotated[ApiRunner, Depends(get_api_runner)],
 ) -> JSONResponse:
-    request_id = str(uuid4())
+    request.state.api_slug = slug
+    request_id = getattr(request.state, "request_id", None) or str(uuid4())
+    request.state.request_id = request_id
     params_or_response = _collect_query_params(request, request_id)
     if isinstance(params_or_response, JSONResponse):
+        request.state.error_category = "invalid_parameters"
         return params_or_response
     params = params_or_response
 
     try:
         definition = _public_tool_definition(session, slug)
     except SQLAlchemyError:
+        request.state.error_category = "api_unavailable"
         return _error_response(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             code="API_UNAVAILABLE",
@@ -231,6 +235,7 @@ def execute_tool(
             request_id=request_id,
         )
     if definition is None:
+        request.state.error_category = "api_not_found"
         return _error_response(
             status_code=status.HTTP_404_NOT_FOUND,
             code="API_NOT_FOUND",
@@ -243,8 +248,10 @@ def execute_tool(
     try:
         decision = policy.evaluate(principal, definition, client_ip, now)
     except (RedisUnavailable, QuotaDatabaseUnavailable, SQLAlchemyError):
+        request.state.error_category = "quota_unavailable"
         return _quota_unavailable(request_id)
     if not decision.allowed:
+        request.state.error_category = decision.code or "policy_denied"
         return _policy_response(decision, request_id)
 
     try:
@@ -266,10 +273,16 @@ def execute_tool(
             )
             response = runner.run(slug, context, params)
     except PolicyDenied as exc:
+        request.state.error_category = exc.decision.code or "policy_denied"
         return _policy_response(exc.decision, request_id)
     except (RedisUnavailable, QuotaDatabaseUnavailable, SQLAlchemyError):
+        request.state.error_category = "quota_unavailable"
         return _quota_unavailable(request_id)
 
+    request.state.cache_hit = bool(response.meta.get("cache_hit", False))
+    request.state.stale = bool(response.meta.get("stale", False))
+    if response.error:
+        request.state.error_category = str(response.error.get("code", "execution_error"))
     return _execution_response(response)
 
 

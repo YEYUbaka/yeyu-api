@@ -10,7 +10,9 @@ from starlette.middleware.cors import CORSMiddleware
 
 from app.api.deps import ApiError, close_api_runner, close_redis_store
 from app.api.main import api_router
+from app.api.routes import health
 from app.core.config import settings
+from app.middleware.request_logging import RequestLoggingMiddleware
 
 FRONTEND_DIR = Path(__file__).parent / "frontend"
 
@@ -50,6 +52,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
 
+app.include_router(health.router)
 app.include_router(api_router, prefix=settings.API_V1_STR)
-app.frontend("/", directory=FRONTEND_DIR)
+if FRONTEND_DIR.is_dir():
+    app.frontend("/", directory=FRONTEND_DIR)

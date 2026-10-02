@@ -3,6 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import col, delete, func, select
 
 from app import crud
@@ -26,6 +27,7 @@ from app.models import (
     UserUpdateMe,
 )
 from app.schemas.identity import GitHubLinkRequest
+from app.services.audit import AuditService
 from app.services.github_oauth import GitHubOAuthService, OAuthConfigurationError
 from app.services.identity import (
     EmailVerificationService,
@@ -62,6 +64,14 @@ def _enforce_user_identity_limit(
         ) from exc
 
 
+def _safe_changed_fields(values: dict[str, object]) -> list[str]:
+    return sorted(
+        key
+        for key in values
+        if key not in {"password", "hashed_password", "token", "secret"}
+    )
+
+
 @router.get(
     "/",
     dependencies=[Depends(get_current_active_superuser)],
@@ -87,7 +97,13 @@ def read_users(session: SessionDep, skip: int = 0, limit: int = 100) -> Any:
 @router.post(
     "/", dependencies=[Depends(get_current_active_superuser)], response_model=UserPublic
 )
-def create_user(*, session: SessionDep, user_in: UserCreate) -> Any:
+def create_user(
+    *,
+    session: SessionDep,
+    user_in: UserCreate,
+    request: Request,
+    current_user: CurrentUser,
+) -> Any:
     """
     Create new user.
     """
@@ -98,7 +114,32 @@ def create_user(*, session: SessionDep, user_in: UserCreate) -> Any:
             detail="The user with this email already exists in the system.",
         )
 
-    user = crud.create_user(session=session, user_create=user_in)
+    try:
+        user = crud.create_user(
+            session=session,
+            user_create=user_in,
+            commit=False,
+        )
+        AuditService(session).record(
+            actor_id=current_user.id,
+            action="user.create",
+            object_type="user",
+            object_id=str(user.id),
+            outcome="success",
+            metadata={
+                "changed_fields": _safe_changed_fields(
+                    user_in.model_dump(exclude_unset=True)
+                )
+            },
+            request_id=getattr(request.state, "request_id", None),
+        )
+        session.commit()
+        session.refresh(user)
+    except (SQLAlchemyError, ValueError) as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=503, detail="User operation temporarily unavailable"
+        ) from exc
     if settings.emails_enabled and user_in.email:
         email_data = generate_new_account_email(
             email_to=user_in.email, username=user_in.email, password=user_in.password
@@ -269,6 +310,8 @@ def update_user(
     session: SessionDep,
     user_id: uuid.UUID,
     user_in: UserUpdate,
+    request: Request,
+    current_user: CurrentUser,
 ) -> Any:
     """
     Update a user.
@@ -293,7 +336,34 @@ def update_user(
     )
     if email_changed:
         db_user.email_verified = False
-    db_user = crud.update_user(session=session, db_user=db_user, user_in=user_in)
+    try:
+        db_user = crud.update_user(
+            session=session,
+            db_user=db_user,
+            user_in=user_in,
+            commit=False,
+        )
+        AuditService(session).record(
+            actor_id=current_user.id,
+            action="user.update",
+            object_type="user",
+            object_id=str(db_user.id),
+            outcome="success",
+            metadata={
+                "changed_fields": _safe_changed_fields(
+                    user_in.model_dump(exclude_unset=True)
+                ),
+                "email_changed": email_changed,
+            },
+            request_id=getattr(request.state, "request_id", None),
+        )
+        session.commit()
+        session.refresh(db_user)
+    except (SQLAlchemyError, ValueError) as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=503, detail="User operation temporarily unavailable"
+        ) from exc
     if email_changed:
         EmailVerificationService(session=session).request(db_user.id)
     return db_user
@@ -301,7 +371,10 @@ def update_user(
 
 @router.delete("/{user_id}", dependencies=[Depends(get_current_active_superuser)])
 def delete_user(
-    session: SessionDep, current_user: CurrentUser, user_id: uuid.UUID
+    session: SessionDep,
+    current_user: CurrentUser,
+    user_id: uuid.UUID,
+    request: Request,
 ) -> Message:
     """
     Delete a user.
@@ -313,8 +386,23 @@ def delete_user(
         raise HTTPException(
             status_code=403, detail="Super users are not allowed to delete themselves"
         )
-    statement = delete(Item).where(col(Item.owner_id) == user_id)
-    session.exec(statement)
-    session.delete(user)
-    session.commit()
+    try:
+        statement = delete(Item).where(col(Item.owner_id) == user_id)
+        session.exec(statement)
+        session.delete(user)
+        AuditService(session).record(
+            actor_id=current_user.id,
+            action="user.delete",
+            object_type="user",
+            object_id=str(user_id),
+            outcome="success",
+            metadata={"deleted_items": True},
+            request_id=getattr(request.state, "request_id", None),
+        )
+        session.commit()
+    except (SQLAlchemyError, ValueError) as exc:
+        session.rollback()
+        raise HTTPException(
+            status_code=503, detail="User operation temporarily unavailable"
+        ) from exc
     return Message(message="User deleted successfully")
