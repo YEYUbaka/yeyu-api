@@ -35,11 +35,13 @@ function CatalogDetailRoute() {
   return (
     <PublicLayout>
       <div className="public-container catalog-detail-shell">
-        {detailQuery.isPending ? <CatalogLoadingState /> : null}
-        {detailQuery.isError ? (
+        {detailQuery.isPending ? (
+          <CatalogLoadingState />
+        ) : detailQuery.isError ? (
           <CatalogDetailErrorState onRetry={() => void detailQuery.refetch()} />
+        ) : detailQuery.data ? (
+          <ApiDetailView detail={detailQuery.data} />
         ) : null}
-        {detailQuery.data ? <ApiDetailView detail={detailQuery.data} /> : null}
       </div>
     </PublicLayout>
   )

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react"
 import { type CatalogPage, CatalogService } from "@/client"
 import CatalogFilters from "@/components/ApiCatalog/CatalogFilters"
 import CatalogGrid from "@/components/ApiCatalog/CatalogGrid"
+import CatalogPagination from "@/components/ApiCatalog/CatalogPagination"
 import CatalogSearch from "@/components/ApiCatalog/CatalogSearch"
 import {
   CatalogEmptyState,
@@ -48,6 +49,7 @@ function CatalogRoutePage() {
         search: (previous) => ({
           ...previous,
           query: normalizedQuery,
+          page: 1,
         }),
         replace: true,
       })
@@ -62,6 +64,7 @@ function CatalogRoutePage() {
       search.query ?? "",
       search.category ?? "",
       search.status ?? "",
+      search.page,
     ],
     queryFn: async () => {
       const response = await CatalogService.searchCatalog({
@@ -69,7 +72,7 @@ function CatalogRoutePage() {
           query: search.query,
           category: search.category,
           status: search.status,
-          page: 1,
+          page: search.page,
           page_size: 20,
         },
       })
@@ -83,6 +86,7 @@ function CatalogRoutePage() {
       search: (previous) => ({
         ...previous,
         [key]: normalizeSearchValue(value),
+        page: 1,
       }),
       replace: true,
     })
@@ -147,6 +151,22 @@ function CatalogRoutePage() {
           !catalogQuery.isError &&
           items.length > 0 ? (
             <CatalogGrid items={items} />
+          ) : null}
+          {!catalogQuery.isPending &&
+          !catalogQuery.isError &&
+          catalogQuery.data ? (
+            <CatalogPagination
+              count={catalogQuery.data.count}
+              page={search.page}
+              pageSize={catalogQuery.data.page_size}
+              isFetching={catalogQuery.isFetching}
+              onPageChange={(page) =>
+                void navigate({
+                  search: (previous) => ({ ...previous, page }),
+                  replace: true,
+                })
+              }
+            />
           ) : null}
         </section>
       </div>

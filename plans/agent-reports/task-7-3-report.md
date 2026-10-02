@@ -133,3 +133,68 @@ Checked 15 files in 14ms. No fixes applied.
 实现代码提交主题：`feat: add public catalog and api detail pages`
 
 提交 SHA：`c13adce`（实现提交；报告随后单独提交）。
+
+## 8. 独立审查 Important 修复（2026-10-02）
+
+本次修复范围仅覆盖独立审查报告中的五个 Important，不修改任务 2 认证/公共壳层，不手改 `frontend/src/routeTree.gen.ts`，不扩展在线调试、API Key 管理或第三方接口。
+
+### 8.1 示例 URL/path 边界
+
+- `frontend/src/components/ApiCatalog/catalog-types.ts` 新增 `normalizeInternalApiPath` 和 `buildPublicApiUrl`。
+- 只接受经过 trim 的单斜杠内部绝对路径，拒绝 `http(s)`、`//`、反斜杠、query/hash、百分号和 `..`。
+- `ApiDetailView` 的 curl、JavaScript、Python 示例统一使用受控路径和 `https://api.yeyubaka.top`；非法路径显示“路径不可用”和不可执行的占位说明，不回显后端任意绝对 URL。
+- 保留 `<YOUR_API_KEY>`，未增加任意 URL 输入或凭据读取。
+
+### 8.2 metadata 防御性脱敏
+
+- `sanitizeMetadata` 递归删除规范化后包含 `token`、`secret`、`password`、`authorization`、`cookie`、`apikey`、`credential`、`privatekey`、`providerref` 的大小写/下划线/连字符变体。
+- `formatMetadata` 在 JSON 格式化前过滤；响应 schema、参数、错误和 cache rules 的展示均使用过滤后的对象，敏感值不替换回显。
+
+### 8.3 目录分页
+
+- `CatalogSearchParams` 新增合法正整数 `page`，缺失或非法值默认为 1。
+- 目录 query key 和 `CatalogService.searchCatalog` 请求均使用 `page` 与 `page_size: 20`。
+- 新增单一职责文件 `frontend/src/components/ApiCatalog/CatalogPagination.tsx`，提供可访问的上一页/下一页、当前页和总页数；搜索、分类、状态变化会重置 `page=1`，分页导航保留其他 search params。
+- 增加分页 URL、请求 query 和上一页行为的 route-mock 回归断言。
+
+### 8.4 详情错误状态互斥
+
+- `frontend/src/routes/catalog/$slug.tsx` 改为 loading/error/success 三选一分支；`isError` 时不再渲染 React Query 保留的旧 detail。
+- 增加“先成功、导航返回后详情请求失败”的 stale detail 回归断言。
+
+### 8.5 Playwright mock 匹配可靠性
+
+- `frontend/tests/public-catalog.spec.ts` 将宽泛 `**/api/v1/catalog*` 改为分别匹配列表 URL 和 `/api/v1/catalog/time` 详情 URL 的正则，并允许 query string。
+- 列表和详情 route mock 不会再把详情请求误判为列表请求，也不会意外访问真实后端。
+
+## 9. 本次真实验证结果
+
+按用户要求没有运行长时间 Playwright、前端 build、后端 pytest、路由生成或线上验收。
+
+先写测试后的短静态检查：
+
+```text
+pnpm exec biome check --no-errors-on-unmatched --files-ignore-unknown=true E:\AI_projects\yeyu-api\frontend\tests\public-catalog.spec.ts
+exit 1
+原因：Biome 仅报告新增 expect.poll 的格式问题，未修改文件。
+```
+
+修复格式并完成实现后的静态检查：
+
+```text
+pnpm exec biome check --no-errors-on-unmatched --files-ignore-unknown=true E:\AI_projects\yeyu-api\frontend\src\components\ApiCatalog\ApiDetailView.tsx E:\AI_projects\yeyu-api\frontend\src\components\ApiCatalog\CatalogPagination.tsx E:\AI_projects\yeyu-api\frontend\src\components\ApiCatalog\catalog-types.ts E:\AI_projects\yeyu-api\frontend\src\routes\catalog\index.tsx E:\AI_projects\yeyu-api\frontend\src\routes\catalog\$slug.tsx E:\AI_projects\yeyu-api\frontend\src\index.css E:\AI_projects\yeyu-api\frontend\tests\public-catalog.spec.ts
+exit 0
+Checked 7 files in 12ms. No fixes applied.
+
+git diff --check
+exit 0
+仅有 Windows 工作树 LF/CRLF 转换提示，无空白错误。
+```
+
+### 未验证项
+
+- 本次新增/强化的 Playwright 行为测试未运行，因此不能宣称浏览器测试通过。
+- build、TypeScript 完整检查、后端接口实际分页/脱敏响应、真实浏览器尺寸验收和线上验收仍未验证。
+- 原有 Playwright `auth.setup.ts` 阻塞证据仍以本报告第 5 节为准；本次没有重试，也没有触碰认证配置或真实凭据。
+
+修复提交主题：`fix: close catalog review findings`

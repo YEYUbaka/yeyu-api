@@ -6,9 +6,13 @@ import CodeExample from "./CodeExample"
 import {
   asRecord,
   asText,
+  buildPublicApiUrl,
   formatMetadata,
   formatUpdatedAt,
+  normalizeInternalApiPath,
+  PUBLIC_API_BASE_URL,
   responseProperties,
+  sanitizeMetadata,
 } from "./catalog-types"
 
 type QueryExample = {
@@ -18,11 +22,15 @@ type QueryExample = {
 
 function parameterExamples(detail: ApiDetail): QueryExample[] {
   return detail.parameters.flatMap((parameter) => {
-    if (asText(parameter.in, "") !== "query") return []
-    const name = asText(parameter.name, "")
+    const safeParameter = asRecord(sanitizeMetadata(parameter))
+    if (!safeParameter || asText(safeParameter.in, "") !== "query") {
+      return []
+    }
+
+    const name = asText(safeParameter.name, "")
     if (!name) return []
 
-    const schema = asRecord(parameter.schema)
+    const schema = asRecord(safeParameter.schema)
     const examples = schema?.examples
     const example = Array.isArray(examples) ? examples[0] : undefined
     const value = asText(example ?? schema?.default, "value")
@@ -33,7 +41,17 @@ function parameterExamples(detail: ApiDetail): QueryExample[] {
 function buildCodeExamples(detail: ApiDetail, authHeader: string) {
   const method = detail.method.toUpperCase()
   const queryParameters = parameterExamples(detail)
-  const absoluteUrl = `https://api.yeyubaka.top${detail.path}`
+  const path = normalizeInternalApiPath(detail.path)
+  const absoluteUrl = buildPublicApiUrl(path)
+  if (!path || !absoluteUrl) {
+    const unavailable = "无法生成示例：目录路径不可用。"
+    return {
+      curl: unavailable,
+      javascript: unavailable,
+      python: unavailable,
+    }
+  }
+
   const curlStart =
     method === "GET"
       ? `curl -G "${absoluteUrl}"`
@@ -44,7 +62,7 @@ function buildCodeExamples(detail: ApiDetail, authHeader: string) {
   }
 
   const javascriptLines = [
-    `const endpoint = new URL(${JSON.stringify(detail.path)}, window.location.origin);`,
+    `const endpoint = new URL(${JSON.stringify(path)}, ${JSON.stringify(PUBLIC_API_BASE_URL)});`,
     ...queryParameters.map(
       (parameter) =>
         `endpoint.searchParams.set(${JSON.stringify(parameter.name)}, ${JSON.stringify(parameter.value)});`,
@@ -99,7 +117,9 @@ export function ApiDetailView({ detail }: ApiDetailViewProps) {
   const authHeader = detail.auth.header ?? "X-API-Key"
   const examples = buildCodeExamples(detail, authHeader)
   const responseFields = responseProperties(detail)
-  const cacheEntries = Object.entries(detail.cache_rules)
+  const safePath = normalizeInternalApiPath(detail.path)
+  const safeCacheRules = asRecord(sanitizeMetadata(detail.cache_rules)) ?? {}
+  const cacheEntries = Object.entries(safeCacheRules)
 
   return (
     <div className="api-detail-page">
@@ -114,7 +134,7 @@ export function ApiDetailView({ detail }: ApiDetailViewProps) {
       <header className="api-detail-header">
         <div className="api-detail-path-row">
           <span className="catalog-method-badge">{detail.method}</span>
-          <code>{detail.path}</code>
+          <code>{safePath ?? "路径不可用"}</code>
         </div>
         <h1 className="api-detail-title">{detail.name}</h1>
         <p className="api-detail-summary">{detail.summary}</p>
@@ -175,19 +195,26 @@ export function ApiDetailView({ detail }: ApiDetailViewProps) {
                   </thead>
                   <tbody>
                     {detail.parameters.map((parameter, index) => {
-                      const schema = asRecord(parameter.schema)
-                      const name = asText(parameter.name, `参数 ${index + 1}`)
+                      const safeParameter =
+                        asRecord(sanitizeMetadata(parameter)) ?? {}
+                      const schema = asRecord(safeParameter.schema)
+                      const name = asText(
+                        safeParameter.name,
+                        `参数 ${index + 1}`,
+                      )
                       const schemaText = asText(schema?.type, "—")
-                      const description = asText(parameter.description, "")
+                      const description = asText(safeParameter.description, "")
                       return (
                         <tr
-                          key={`${name}-${asText(parameter.in, "unknown")}-${index}`}
+                          key={`${name}-${asText(safeParameter.in, "unknown")}-${index}`}
                         >
                           <th scope="row">
                             <code>{name}</code>
                           </th>
-                          <td>{asText(parameter.in)}</td>
-                          <td>{parameter.required === true ? "是" : "否"}</td>
+                          <td>{asText(safeParameter.in)}</td>
+                          <td>
+                            {safeParameter.required === true ? "是" : "否"}
+                          </td>
                           <td>
                             <span>{schemaText}</span>
                             {description ? (
@@ -252,17 +279,23 @@ export function ApiDetailView({ detail }: ApiDetailViewProps) {
                     </tr>
                   </thead>
                   <tbody>
-                    {detail.errors.map((error, index) => (
-                      <tr key={`${asText(error.code, "error")}-${index}`}>
-                        <td>{asText(error.status)}</td>
-                        <th scope="row">
-                          <code>{asText(error.code)}</code>
-                        </th>
-                        <td>
-                          {asText(error.description, asText(error.message))}
-                        </td>
-                      </tr>
-                    ))}
+                    {detail.errors.map((error, index) => {
+                      const safeError = asRecord(sanitizeMetadata(error)) ?? {}
+                      return (
+                        <tr key={`${asText(safeError.code, "error")}-${index}`}>
+                          <td>{asText(safeError.status)}</td>
+                          <th scope="row">
+                            <code>{asText(safeError.code)}</code>
+                          </th>
+                          <td>
+                            {asText(
+                              safeError.description,
+                              asText(safeError.message),
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               </div>
