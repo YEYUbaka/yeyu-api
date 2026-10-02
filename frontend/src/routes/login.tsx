@@ -46,14 +46,14 @@ export const Route = createFileRoute("/login")({
   beforeLoad: async ({ search }) => {
     if (isLoggedIn() && search.oauth !== "github") {
       throw redirect({
-        to: "/",
+        to: "/dashboard",
       })
     }
   },
   head: () => ({
     meta: [
       {
-        title: "Log In - FastAPI Template",
+        title: "登录 - Yeyu API",
       },
     ],
   }),
@@ -70,7 +70,7 @@ function Login() {
     UsersService.readUserMe()
       .then(() => {
         localStorage.setItem("session_authenticated", "1")
-        void navigate({ to: "/" })
+        void navigate({ to: "/dashboard" })
       })
       .catch(() => {
         localStorage.removeItem("session_authenticated")

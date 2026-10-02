@@ -1,11 +1,6 @@
 import { Link } from "@tanstack/react-router"
 
-import { useTheme } from "@/components/theme-provider"
 import { cn } from "@/lib/utils"
-import icon from "/assets/images/fastapi-icon.svg"
-import iconLight from "/assets/images/fastapi-icon-light.svg"
-import logo from "/assets/images/fastapi-logo.svg"
-import logoLight from "/assets/images/fastapi-logo-light.svg"
 
 interface LogoProps {
   variant?: "full" | "icon" | "responsive"
@@ -18,43 +13,49 @@ export function Logo({
   className,
   asLink = true,
 }: LogoProps) {
-  const { resolvedTheme } = useTheme()
-  const isDark = resolvedTheme === "dark"
-
-  const fullLogo = isDark ? logoLight : logo
-  const iconLogo = isDark ? iconLight : icon
-
   const content =
     variant === "responsive" ? (
       <>
-        <img
-          src={fullLogo}
-          alt="FastAPI"
+        <span
+          aria-hidden="true"
           className={cn(
-            "h-6 w-auto group-data-[collapsible=icon]:hidden",
+            "inline-flex h-7 items-center gap-1.5 text-lg font-semibold tracking-tight group-data-[collapsible=icon]:hidden",
             className,
           )}
-        />
-        <img
-          src={iconLogo}
-          alt="FastAPI"
+        >
+          <span className="logo-mark">Y</span>
+          <span>Yeyu API</span>
+        </span>
+        <span
+          aria-hidden="true"
           className={cn(
-            "size-5 hidden group-data-[collapsible=icon]:block",
+            "logo-mark hidden size-7 items-center justify-center text-sm group-data-[collapsible=icon]:inline-flex",
             className,
           )}
-        />
+        >
+          Y
+        </span>
       </>
     ) : (
-      <img
-        src={variant === "full" ? fullLogo : iconLogo}
-        alt="FastAPI"
-        className={cn(variant === "full" ? "h-6 w-auto" : "size-5", className)}
-      />
+      <span
+        aria-hidden="true"
+        className={cn(
+          "inline-flex items-center gap-2 text-lg font-semibold tracking-tight",
+          className,
+        )}
+      >
+        <span className="logo-mark">Y</span>
+        {variant === "full" ? <span>Yeyu API</span> : null}
+      </span>
     )
 
   if (!asLink) {
     return content
   }
 
-  return <Link to="/">{content}</Link>
+  return (
+    <Link to="/" aria-label="Yeyu API 首页" className="inline-flex">
+      {content}
+    </Link>
+  )
 }

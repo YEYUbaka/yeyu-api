@@ -43,10 +43,10 @@ test("Log in with valid email and password ", async ({ page }) => {
   await fillForm(page, firstSuperuser, firstSuperuserPassword)
   await page.getByRole("button", { name: "Log In" }).click()
 
-  await page.waitForURL("/")
+  await page.waitForURL("/dashboard")
 
   await expect(
-    page.getByText("Welcome back, nice to see you again!"),
+    page.getByRole("heading", { name: "Yeyu API 控制台" }),
   ).toBeVisible()
 })
 
@@ -75,10 +75,10 @@ test("Successful log out", async ({ page }) => {
   await fillForm(page, firstSuperuser, firstSuperuserPassword)
   await page.getByRole("button", { name: "Log In" }).click()
 
-  await page.waitForURL("/")
+  await page.waitForURL("/dashboard")
 
   await expect(
-    page.getByText("Welcome back, nice to see you again!"),
+    page.getByRole("heading", { name: "Yeyu API 控制台" }),
   ).toBeVisible()
 
   await page.getByTestId("user-menu").click()
@@ -104,6 +104,27 @@ test("Logged-out user cannot access protected routes", async ({ page }) => {
 
   await page.goto("/settings")
   await page.waitForURL("/login")
+})
+
+test("Anonymous users are redirected to login from items", async ({ page }) => {
+  await page.goto("/items")
+
+  await page.waitForURL("/login")
+  await expect(page).toHaveURL("/login")
+})
+
+test("Logged-in users are redirected from login to dashboard", async ({
+  page,
+}) => {
+  await page.goto("/login")
+
+  await fillForm(page, firstSuperuser, firstSuperuserPassword)
+  await page.getByRole("button", { name: "Log In" }).click()
+  await page.waitForURL("/dashboard")
+
+  await page.goto("/login")
+  await page.waitForURL("/dashboard")
+  await expect(page).toHaveURL("/dashboard")
 })
 
 test("Redirects to /login when token is wrong", async ({ page }) => {
