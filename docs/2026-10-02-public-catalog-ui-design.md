@@ -32,7 +32,7 @@
 | `/dashboard` | 登录 | 原模板 Dashboard 的 Yeyu 控制台入口 |
 | `/items`、`/settings`、`/admin` | 登录 | 保留现有受保护路由，继续挂在受保护布局下 |
 
-`E:\AI_projects\yeyu-api\frontend\src\routes\_layout\index.tsx` 改为受保护的 `/dashboard` 子路由；`useAuth` 登录成功和登录页已登录重定向都改为 `/dashboard`。现有登录、登出、用户设置和管理员 E2E 断言同步更新，不能用公开首页绕过受保护布局。
+删除 `E:\AI_projects\yeyu-api\frontend\src\routes\_layout\index.tsx`，新建 `E:\AI_projects\yeyu-api\frontend\src\routes\_layout\dashboard.tsx` 作为受保护的 `/dashboard` 子路由；`useAuth` 登录成功和登录页已登录重定向都改为 `/dashboard`。这样不会与新的公开 `E:\AI_projects\yeyu-api\frontend\src\routes\index.tsx` 产生重复根路由。现有登录、登出、用户设置和管理员 E2E 断言同步更新，不能用公开首页绕过受保护布局。
 
 公开页面使用新的轻量站点布局，不复用需要登录的 `AppSidebar`。页眉显示 Yeyu API 标识、目录入口、公益说明和登录/控制台入口；移动端使用折叠菜单，键盘焦点可见，所有导航均使用 TanStack Router 的类型安全链接。
 
@@ -77,7 +77,7 @@
 - 创建 `E:\AI_projects\yeyu-api\frontend\src\routes\catalog\$slug.tsx`：详情页。
 - 创建 `E:\AI_projects\yeyu-api\frontend\src\components\PublicSite\`：站点页眉、页脚、状态徽章、空状态和公共布局。
 - 创建 `E:\AI_projects\yeyu-api\frontend\src\components\ApiCatalog\`：搜索框、筛选栏、卡片、详情文档和代码示例。
-- 修改 `E:\AI_projects\yeyu-api\frontend\src\routes\_layout\index.tsx`、`E:\AI_projects\yeyu-api\frontend\src\routes\_layout.tsx`、`E:\AI_projects\yeyu-api\frontend\src\hooks\useAuth.ts`、`E:\AI_projects\yeyu-api\frontend\src\routes\login.tsx`、`E:\AI_projects\yeyu-api\frontend\src\components\Sidebar\AppSidebar.tsx`：完成 `/dashboard` 迁移。
+- 删除 `E:\AI_projects\yeyu-api\frontend\src\routes\_layout\index.tsx`；创建 `E:\AI_projects\yeyu-api\frontend\src\routes\_layout\dashboard.tsx`；修改 `E:\AI_projects\yeyu-api\frontend\src\routes\_layout.tsx`、`E:\AI_projects\yeyu-api\frontend\src\hooks\useAuth.ts`、`E:\AI_projects\yeyu-api\frontend\src\routes\login.tsx`、`E:\AI_projects\yeyu-api\frontend\src\components\Sidebar\AppSidebar.tsx`：完成 `/dashboard` 迁移。
 - 修改 `E:\AI_projects\yeyu-api\frontend\src\components\Common\Logo.tsx`、`E:\AI_projects\yeyu-api\frontend\src\components\Common\Footer.tsx` 和 `E:\AI_projects\yeyu-api\frontend\src\index.css`：移除模板品牌，建立本地视觉 token。
 - 修改 `E:\AI_projects\yeyu-api\backend\app\initial_data.py`，必要时创建 `E:\AI_projects\yeyu-api\backend\app\catalog_seed.py`：幂等写入两个固定目录记录。
 - 修改 `E:\AI_projects\yeyu-api\frontend\tests\login.spec.ts`、`E:\AI_projects\yeyu-api\frontend\tests\user-settings.spec.ts`；创建 `E:\AI_projects\yeyu-api\frontend\tests\public-catalog.spec.ts` 和必要的组件单测。
