@@ -95,8 +95,8 @@ Playwright GREEN：未运行。由于 Chromium 可执行文件缺失，且用户
 ## 提交
 
 - 实现提交主题：`feat: split public and protected web shells`
-- 提交 SHA：提交完成后回填。
-- 报告状态：本文件随实现提交写入；若提交 SHA 需要在提交后补录，将使用后续文档提交更新本节。
+- 提交 SHA：`0acbfc3`。
+- 报告状态：本文件随实现提交写入；本次回填 SHA 后产生一个仅文档的收尾提交。
 
 ## 未验证项
 
