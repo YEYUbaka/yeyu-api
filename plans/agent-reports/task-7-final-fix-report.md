@@ -238,3 +238,13 @@ git diff --check
 - 本轮未重新执行 Vite build、Playwright、后端集成测试或真实线上验收；这些边界不属于本次 7 个 tsc 错误的最小修复。
 - 工作树中原有的其他计划/报告改动未纳入本次提交，需继续由其原任务处理。
 - 本轮没有重新生成或手工编辑 `routeTree.gen.ts`。
+
+## 控制器复核补充（2026-10-02）
+
+为避免把子代理环境中的结果误当成当前环境稳定通过，控制器在后续清洁检查中重新执行了目录测试：
+
+```text
+conda run -n yeyu-api python -m pytest E:\AI_projects\yeyu-api\backend\tests\api\routes\test_catalog.py -q --confcutdir=E:\AI_projects\yeyu-api\backend\tests\api\routes
+```
+
+本次当前工作站结果：收集阶段失败，原因是 `E:\AI_projects\yeyu-api\backend\app\frontend` 静态构建目录不存在；因此 `6 passed` 只保留为修复子代理当时测试 fixture 环境的记录，不作为本次控制器的稳定集成验收结论。随后执行的 Ruff 仍为 `All checks passed!`。
