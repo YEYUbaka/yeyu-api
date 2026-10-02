@@ -15,9 +15,9 @@ export function PublicFooter() {
           </p>
         </div>
         <nav aria-label="页脚导航" className="flex flex-wrap gap-4 text-sm">
-          <a className="public-footer-link" href="/catalog">
+          <Link className="public-footer-link" to="/catalog">
             API 目录
-          </a>
+          </Link>
           <Link className="public-footer-link" to="/" hash="usage">
             使用规范
           </Link>

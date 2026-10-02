@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
 
 import { CatalogService } from "@/client"
+import { formatUpdatedAt } from "@/components/ApiCatalog/catalog-types"
 import PublicLayout from "@/components/PublicSite/PublicLayout"
 
 export const Route = createFileRoute("/")({
@@ -14,17 +15,6 @@ export const Route = createFileRoute("/")({
     ],
   }),
 })
-
-function formatUpdatedAt(value?: string | null) {
-  if (!value) return "更新时间待补充"
-
-  const timestamp = Date.parse(value)
-  if (Number.isNaN(timestamp)) return value
-
-  return new Intl.DateTimeFormat("zh-HK", {
-    dateStyle: "medium",
-  }).format(new Date(timestamp))
-}
 
 function CatalogPreview() {
   const catalogQuery = useQuery({
@@ -58,9 +48,9 @@ function CatalogPreview() {
             这里展示后端公开目录中的接口，不展示虚构卡片或调用统计。
           </p>
         </div>
-        <a className="public-text-link" href="/catalog">
+        <Link className="public-text-link" to="/catalog">
           搜索完整目录 <span aria-hidden="true">→</span>
-        </a>
+        </Link>
       </div>
 
       {catalogQuery.isPending ? (
@@ -98,7 +88,13 @@ function CatalogPreview() {
               </div>
               <div className="min-w-0">
                 <h3 className="truncate text-base font-semibold text-[var(--yeyu-ink)]">
-                  {item.name}
+                  <Link
+                    to="/catalog/$slug"
+                    params={{ slug: item.slug }}
+                    className="public-catalog-title-link"
+                  >
+                    {item.name}
+                  </Link>
                 </h3>
                 <p className="mt-1 text-sm text-[var(--yeyu-muted)]">
                   {item.summary}
@@ -106,6 +102,8 @@ function CatalogPreview() {
               </div>
               <div className="public-catalog-meta">
                 <span>{item.category}</span>
+                {item.is_free ? <span>免费</span> : null}
+                <span>{item.status}</span>
                 <time dateTime={item.updated_at ?? undefined}>
                   {formatUpdatedAt(item.updated_at)}
                 </time>
@@ -139,7 +137,7 @@ function PublicHome() {
                 id="catalog-query"
                 name="query"
                 className="public-search-input"
-                placeholder="搜索时间戳、UUID、天气……"
+                placeholder="搜索时间、UUID 等公开接口……"
                 type="search"
               />
               <button className="public-primary-button" type="submit">
