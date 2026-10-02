@@ -13,6 +13,7 @@ import {
   CatalogLoadingState,
 } from "@/components/ApiCatalog/CatalogStates"
 import {
+  type CatalogFacetResult,
   type CatalogSearchParams,
   normalizeSearchValue,
   parseCatalogSearch,
@@ -22,7 +23,7 @@ import PublicLayout from "@/components/PublicSite/PublicLayout"
 const FACET_PAGE_SIZE = 100
 const MAX_FACET_PAGES = 100
 
-async function fetchCatalogFacetItems(): Promise<CatalogItem[]> {
+async function fetchCatalogFacetItems(): Promise<CatalogFacetResult> {
   const items: CatalogItem[] = []
 
   for (let page = 1; page <= MAX_FACET_PAGES; page += 1) {
@@ -36,11 +37,11 @@ async function fetchCatalogFacetItems(): Promise<CatalogItem[]> {
     items.push(...catalogPage.data)
 
     if (items.length >= catalogPage.count || catalogPage.data.length === 0) {
-      return items
+      return { items, complete: true }
     }
   }
 
-  return items
+  return { items: [], complete: false, reason: "page-limit" }
 }
 
 export const Route = createFileRoute("/catalog/")({
@@ -104,14 +105,18 @@ function CatalogRoutePage() {
     },
   })
 
-  const catalogFacetQuery = useQuery<CatalogItem[]>({
+  const catalogFacetQuery = useQuery<CatalogFacetResult>({
     queryKey: ["public-catalog-facets"],
     queryFn: fetchCatalogFacetItems,
     staleTime: 60_000,
   })
 
   const items = catalogQuery.data?.data ?? []
-  const filterItems = catalogFacetQuery.data ?? items
+  const filterItems = catalogFacetQuery.data
+    ? catalogFacetQuery.data.complete
+      ? catalogFacetQuery.data.items
+      : []
+    : items
   const updateFilter = (key: "category" | "status", value: string) => {
     void navigate({
       search: (previous) => ({
@@ -142,6 +147,15 @@ function CatalogRoutePage() {
           onCategoryChange={(value) => updateFilter("category", value)}
           onStatusChange={(value) => updateFilter("status", value)}
         />
+        {catalogFacetQuery.data && !catalogFacetQuery.data.complete ? (
+          <p
+            className="catalog-facets-incomplete"
+            data-testid="catalog-facets-incomplete"
+            role="status"
+          >
+            筛选选项未完整加载，已隐藏未确认的部分结果。
+          </p>
+        ) : null}
         {catalogFacetQuery.isError && !catalogQuery.isError ? (
           <CatalogErrorState onRetry={() => void catalogFacetQuery.refetch()} />
         ) : null}

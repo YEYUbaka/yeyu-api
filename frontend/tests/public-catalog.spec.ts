@@ -28,6 +28,20 @@ const uuidItem = {
   updated_at: "2026-10-02T00:00:00Z",
 }
 
+const lateFacetItem = {
+  ...uuidItem,
+  slug: "late-facet",
+  name: "后分页接口",
+  category: "data",
+  status: "deprecated",
+  path: "/v1/data/late-facet",
+}
+
+const facetPageOneItems = Array.from({ length: 100 }, (_, index) => ({
+  ...timeItem,
+  slug: `time-${index}`,
+}))
+
 const timeDetail = {
   ...timeItem,
   auth: { type: "api_key", header: "X-API-Key" },
@@ -72,6 +86,18 @@ const timeDetail = {
   source: "Yeyu API",
   cache_rules: { cacheable: false, ttl_seconds: 0, stale_if_error: false },
 }
+
+const sensitiveQueryParameters = [
+  { name: "apiKey", value: "1234567890" },
+  { name: "API_KEY", value: "1234567891" },
+  { name: "api-key", value: "1234567892" },
+  { name: "access_token", value: "1234567893" },
+  { name: "Access-Token", value: "1234567894" },
+  { name: "ACCESS.TOKEN", value: "1234567895" },
+  { name: "client_secret", value: "1234567896" },
+  { name: "Client-Secret", value: "1234567897" },
+  { name: "CLIENT.SECRET", value: "1234567898" },
+] as const
 
 const unsafeDetail = {
   ...timeDetail,
@@ -143,6 +169,16 @@ const unsafeDetail = {
 const unsafeExamplesDetail = {
   ...unsafeDetail,
   path: "/v1/tools/time",
+  parameters: [
+    ...unsafeDetail.parameters,
+    ...sensitiveQueryParameters.map(({ name, value }) => ({
+      name,
+      in: "query",
+      required: false,
+      description: "敏感查询参数测试",
+      schema: { type: "string", default: value },
+    })),
+  ],
 }
 
 type CatalogPage = {
@@ -274,7 +310,7 @@ test("Catalog pagination preserves search filters and requests the selected page
       facetRequests.push(url)
       const pageNumber = Number(url.searchParams.get("page") ?? "1")
       const response: CatalogPage = {
-        data: pageNumber === 2 ? [uuidItem] : [timeItem],
+        data: pageNumber === 1 ? facetPageOneItems : [lateFacetItem],
         count: 101,
         page: pageNumber,
         page_size: 100,
@@ -324,6 +360,10 @@ test("Catalog pagination preserves search filters and requests the selected page
       (request) => request.searchParams.get("status") === null,
     ),
   ).toBe(true)
+  await expect(page.getByLabel("分类").locator("option")).toContainText("data")
+  await expect(page.getByLabel("状态").locator("option")).toContainText(
+    "deprecated",
+  )
   await expect(page.getByRole("button", { name: "下一页" })).toBeEnabled()
 
   await page.getByRole("button", { name: "下一页" }).click()
@@ -340,6 +380,61 @@ test("Catalog pagination preserves search filters and requests the selected page
   await expect(page).toHaveURL(
     /query=time.*category=tools.*status=published.*page=1/,
   )
+})
+
+test("Catalog marks facet options incomplete after the page safety limit", async ({
+  page,
+}) => {
+  const facetRequests: URL[] = []
+  await page.route(catalogListUrl, async (route) => {
+    const url = new URL(route.request().url())
+    const isFacetRequest =
+      url.searchParams.get("page_size") === "100" &&
+      !url.searchParams.has("query") &&
+      !url.searchParams.has("category") &&
+      !url.searchParams.has("status")
+    if (isFacetRequest) {
+      facetRequests.push(url)
+      const pageNumber = Number(url.searchParams.get("page") ?? "1")
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: pageNumber === 100 ? [lateFacetItem] : [timeItem],
+          count: 10_001,
+          page: pageNumber,
+          page_size: 100,
+        }),
+      })
+      return
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: [timeItem],
+        count: 1,
+        page: 1,
+        page_size: 20,
+      }),
+    })
+  })
+
+  await page.goto("/catalog")
+
+  await expect(page.getByTestId("catalog-facets-incomplete")).toBeVisible()
+  await expect(
+    page.getByText("筛选选项未完整加载", { exact: false }),
+  ).toBeVisible()
+  await expect(page.getByLabel("分类").locator("option")).toHaveText([
+    "全部分类",
+  ])
+  await expect(page.getByLabel("状态").locator("option")).toHaveText([
+    "全部状态",
+  ])
+  await expect.poll(() => facetRequests.length).toBe(100)
+  expect(facetRequests.at(-1)?.searchParams.get("page")).toBe("100")
 })
 
 test("Catalog displays an explicit empty state for an empty result", async ({
@@ -426,6 +521,10 @@ test("Detail omits unsafe parameter examples from every code sample", async ({
   expect(renderedExamples).not.toContain("`id`")
   expect(renderedExamples).not.toContain("secret-token-<NON_SECRET_TEST_VALUE>")
   expect(renderedExamples).not.toContain("X-Evil-Header")
+  for (const { name, value } of sensitiveQueryParameters) {
+    expect(renderedExamples).not.toContain(name)
+    expect(renderedExamples).not.toContain(value)
+  }
 })
 
 test("Detail errors do not render stale detail data", async ({ page }) => {

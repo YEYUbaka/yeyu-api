@@ -233,3 +233,32 @@ exit 0
 ```
 
 本轮没有运行 Playwright、前端 build、后端 pytest、路由生成、真实浏览器或线上验收；因此新增浏览器断言、TypeScript 完整检查、实际后端跨页响应和线上结果仍未验证。修复提交主题：`fix: harden catalog examples and filters`。
+
+## 11. 第二次复审 Important 收口（2026-10-02）
+
+本次仅修复 `task-7-3-second-fix-review.md` 指出的两个 Important；未修改 `frontend/src/routeTree.gen.ts`、认证/公共壳层、后端、线上服务、DNS、Nginx 或凭据。
+
+### 11.1 敏感 query 参数名和值
+
+- `normalizeSafeQueryKey` 现在在格式校验后复用统一的敏感字段规范化判定；`apiKey`、`API_KEY`、`api-key`、`access_token`、`Access-Token`、`ACCESS.TOKEN`、`client_secret`、`Client-Secret`、`CLIENT.SECRET` 等变体不会进入示例。
+- 回归夹具为这些敏感名称提供仅由合法字符组成的数值，断言三种代码示例均不包含名称或值；固定认证头仍为 `X-API-Key: <YOUR_API_KEY>`，既有内部路径和外部 URL 防护保持不变。
+
+### 11.2 facets 上限不完整状态
+
+- 新增 `CatalogFacetResult` 完成度类型；达到 100 页上限时返回 `complete: false`、`reason: "page-limit"`，并丢弃部分 items。
+- 页面显示 `catalog-facets-incomplete` 状态，且不会把被截断的部分结果传给 `CatalogFilters`；只有按 `count` 或空页停止时才使用已收集 facet。
+- 回归夹具第 1 页返回 100 条、第 2 页返回唯一 `data`/`deprecated` 项并断言其进入筛选选项；另以 `count=10001` 覆盖请求到第 100 页后的显式不完整状态及空筛选选项。
+
+### 11.3 本次真实静态验证
+
+```text
+pnpm exec biome check --no-errors-on-unmatched --files-ignore-unknown=true E:\AI_projects\yeyu-api\frontend\src\components\ApiCatalog\catalog-types.ts E:\AI_projects\yeyu-api\frontend\src\routes\catalog\index.tsx E:\AI_projects\yeyu-api\frontend\tests\public-catalog.spec.ts
+exit 0
+Checked 3 files in 12ms. No fixes applied.
+
+git diff --check
+exit 0
+仅有 Windows 工作树 LF/CRLF 转换提示，无空白错误。
+```
+
+本次没有运行 Playwright、前端 build、后端测试、路由生成、TypeScript 完整检查或线上验收；因此新增浏览器回归断言和完整类型/运行时行为仍未验证。

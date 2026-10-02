@@ -9,6 +9,17 @@ export type CatalogSearchParams = {
 
 export type CatalogMetadata = Record<string, unknown>
 
+export type CatalogFacetResult =
+  | {
+      items: CatalogItem[]
+      complete: true
+    }
+  | {
+      items: []
+      complete: false
+      reason: "page-limit"
+    }
+
 export const PUBLIC_API_BASE_URL = "https://api.yeyubaka.top"
 export const PUBLIC_API_AUTH_HEADER = "X-API-Key"
 
@@ -47,7 +58,9 @@ export function normalizeSearchValue(value: unknown): string | undefined {
 }
 
 export function normalizeSafeQueryKey(value: unknown): string | undefined {
-  return typeof value === "string" && SAFE_QUERY_KEY_PATTERN.test(value)
+  return typeof value === "string" &&
+    SAFE_QUERY_KEY_PATTERN.test(value) &&
+    !isSensitiveMetadataKey(value)
     ? value
     : undefined
 }
