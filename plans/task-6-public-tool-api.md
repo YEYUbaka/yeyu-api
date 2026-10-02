@@ -68,14 +68,16 @@ git -C "E:\AI_projects\yeyu-api" status --short --branch
 - [x] 公共工具路由只接受 API Key，Cookie 不得绕过。
 - [x] 额度/限频/admission/lease/执行/错误响应边界有测试证据。
 - [x] 内容适配器仍未注册，候选第三方接口仍未公开。
-- [ ] 本地静态检查和相关回归测试通过。
-- [ ] Git 提交、推送和远端 CI 结果真实记录。
+- [x] 本地静态检查和相关回归测试通过（聚焦路由 `16 passed`、策略/执行回归 `68 passed`、Ruff、compileall、diff-check 均通过；全量 API 夹具仍受本机 PostgreSQL 认证阻塞）。
+- [x] Git 提交、推送和远端 CI 结果真实记录。
 
 ## 执行证据（2026-10-02）
 
-- 新增测试首次运行真实 RED：收集阶段因待实现的 `get_client_ip` 依赖不存在而失败；实现后隔离运行结果为 `10 passed`。
+- 新增测试首次运行真实 RED：收集阶段因待实现的 `get_client_ip` 依赖不存在而失败；实现后隔离运行结果为 `16 passed`。
 - 隔离测试覆盖无 Key、Cookie 不绕过、有效 Key、无效/撤销 Key、healthy/published、trial/未注册 slug、固定路径、参数边界、策略 403/429、Redis/lease 故障 503、lease 清理、客户端 IP 和 OpenAPI API Key security，共 `16 passed`。
 - Ruff：变更 Python 文件 `All checks passed`；compileall 退出码 0；`git diff --check` 无空白错误。
 - 相关服务回归：`test_policy.py` 与 `test_execution.py` 共 `68 passed`。
 - 全量 API 路由回归在本机未完成：根测试夹具会初始化默认 PostgreSQL，当前本地连接使用的测试配置认证失败；该范围标记为未验证，不能视为产品或线上验收通过。
 - 独立只读安全审查代理完成：未发现 P0/P1；P2 指出的数据库异常统一映射已补为 503，runner/model 脱敏依赖已由执行层既有严格响应契约和测试覆盖。审查范围未包含 registry.py，但已人工核对当前 `BUILTIN_SLUGS=(time, uuid)`。
+- Git 提交：`63fd4a3 feat: expose guarded public tool routes`；远端 `origin/main` 已确认指向 `63fd4a31748e9a57ff2588f325492352edfb795a`。
+- 远端 CI 针对该提交全部成功：Test Backend `36973887958`、Test Docker Compose `36973887766`、Playwright Tests `36973887719`、Zizmor `36973887675`；Playwright 四个分片及报告合并也成功。
