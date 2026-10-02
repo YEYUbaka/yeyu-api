@@ -32,8 +32,9 @@
 
 **Interfaces:**
 
-- `StaticCatalogEntry` 必须包含：`slug`、`name`、`category`、`summary`、`sourceUrl`、`officialDocsUrl`、`licenseStatus`、`redistributionMode`、`freeTier`、`authRequired`、`stability`、`updatedAt`、`displayStatus`。
+- `StaticCatalogEntry` 必须包含：`slug`、`name`、`providerName`、`ownership`、`category`、`summary`、`sourceUrl`、`officialDocsUrl`、`licenseStatus`、`redistributionMode`、`freeTier`、`authRequired`、`stability`、`updatedAt`、`displayStatus`。
 - `redistributionMode` 只允许 `self-operated`、`reference-only`、`link-only`；只有 `self-operated` 可以在静态站显示“Yeyu 自营候选”，另外两类必须显示资料/外链性质。
+- `ownership=yeyu` 才允许使用 `self-operated` 与 `self-operated-ready`；`ownership=third-party` 必须使用 `reference-only`/`link-only`，不得显示为 Yeyu 自营候选。
 - `sourceUrl` 和 `officialDocsUrl` 必须是 HTTPS；目录数据不得包含 `apiKey`、`token`、`secret`、`password`、`authorization`、`cookie`、私钥或任意用户提交 URL。
 - `displayStatus` 只允许 `candidate`、`verified-reference`、`self-operated-ready`；没有真实验证证据的条目不得显示“稳定可用”或“已接入”。
 
@@ -68,7 +69,7 @@
 - [x] **Step 3: 实现本地搜索和筛选。** 搜索只匹配 `name`、`summary`、`category`、`slug`；筛选只使用已审核的 category；空结果显示明确的静态状态，不请求网络。
 - [x] **Step 4: 实现来源和合规提示。** 每张卡片显示“免费性质”“是否需要 Key”“协议/再分发状态”“更新时间”“来源/官方文档”；`reference-only` 和 `link-only` 显示资料/官方链接性质，不冒充 Yeyu 代理。
 - [x] **Step 5: 配置独立静态构建。** `vite.static.config.ts` 只使用 React 和 Tailwind 插件，输出到 `E:\AI_projects\yeyu-api\deploy\static-catalog`；`package.json` 已增加 `build:static-catalog` 和 `preview:static`。
-- [x] **Step 6: 运行构建验证。** 已运行目录校验、TypeScript、Biome、`pnpm --dir E:\AI_projects\yeyu-api\frontend run build:static-catalog`；产物仅包含静态 HTML、JS、CSS 资源，生成目录由 Git 忽略。
+- [x] **Step 6: 运行构建验证。** 已运行目录校验、TypeScript、Biome、`pnpm --dir E:\AI_projects\yeyu-api\frontend run build:static-catalog`；产物包含静态 HTML、JS、CSS 和不参与页面请求的 `build-meta.json` provenance 文件，生成目录由 Git 忽略。
 - [x] **Step 7: 提交。** 通过 `git -C E:\AI_projects\yeyu-api diff --check` 后提交本阶段静态目录实现。
 
 ### Task 3: 静态站浏览器验收和无后端证明
@@ -86,7 +87,7 @@
 
 - [x] **Step 1: 编写失败测试。** 覆盖首页标题、真实候选接口名称、搜索、分类筛选、官方文档链接、移动 viewport 和“仅资料汇总”提示；空结果也有实现状态。
 - [x] **Step 2: 运行测试确认缺少静态入口时失败。** 已记录静态入口错误导致页面元素不存在的真实失败，未连接生产域名。
-- [x] **Step 3: 完成静态页面后重跑。** 桌面和移动场景最终 10/10 通过；页面请求只包含测试静态服务器资源，官方链接只检查 href。
+- [x] **Step 3: 完成静态页面后重跑。** 桌面和移动场景最终 12/12 通过；页面请求 origin 严格限制为测试静态服务器，搜索和分类交互后仍无外部请求，官方链接只检查 href。
 - [ ] **Step 4: 回归动态前端契约。** 运行现有 TypeScript、Biome 和 public catalog Playwright 测试；静态入口不得修改动态平台的登录、API Key、管理端或后端调用行为。
 - [x] **Step 5: 提交。** 测试输出脱敏且通过后，运行 `git -C E:\AI_projects\yeyu-api diff --check`，并随本次静态目录阶段提交。
 
@@ -115,7 +116,7 @@
 
 - [x] **Step 1: 设计独立静态发布目录。** 目标服务器只使用 `/opt/yeyu-api-static/releases/<commit-sha>/` 和 `current` 指针；不使用 `/www/wwwroot/yeyubaka.top`，不复用 `new.api.yeyubaka.top`，不创建 Docker 容器。
 - [x] **Step 2: 编写仅匹配目标域名的 Nginx 示例。** 示例只包含 `server_name api.yeyubaka.top`、静态 root、SPA fallback、静态资源缓存和基础安全响应头；不复制现有 Nginx 配置，不新增其他域名或动态 upstream。
-- [x] **Step 3: 编写本地打包脚本。** 脚本只读取 `E:\AI_projects\yeyu-api\deploy\static-catalog`，输出带 commit SHA 的可回滚压缩包和文件清单；禁止敏感文件名，不读取 `.env`、私钥或任何 Secret。
+- [x] **Step 3: 编写本地打包脚本。** 脚本只读取 `E:\AI_projects\yeyu-api\deploy\static-catalog`，输出带 commit SHA 的可回滚压缩包和文件清单；校验 `build-meta.json`、clean 工作树和当前 commit 一致性，禁止敏感文件名，不读取 `.env`、私钥或任何 Secret。
 - [x] **Step 4: 编写回滚步骤。** 发布失败时只把静态站 `current` 指针切回上一版本，并撤回 Yeyu API 独立 vhost；不得执行 `docker compose down`、删除共享卷或修改旧服务配置。
 - [x] **Step 5: 提交发布准备文件。** 运行路径扫描，确认没有旧站覆盖写入、Secret 和破坏性清理命令后提交发布准备阶段。
 

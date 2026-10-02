@@ -10,6 +10,7 @@ const allowedRedistributionModes = new Set([
   "reference-only",
   "link-only",
 ])
+const allowedOwnershipValues = new Set(["yeyu", "third-party"])
 const allowedDisplayStatuses = new Set([
   "candidate",
   "verified-reference",
@@ -86,6 +87,8 @@ if (!Array.isArray(entries) || entries.length === 0) {
 const requiredFields = [
   "slug",
   "name",
+  "providerName",
+  "ownership",
   "category",
   "summary",
   "sourceUrl",
@@ -133,8 +136,31 @@ for (const [index, entry] of (Array.isArray(entries)
   if (!allowedRedistributionModes.has(entry.redistributionMode)) {
     fail(`${path}.redistributionMode is unsupported`)
   }
+  if (!allowedOwnershipValues.has(entry.ownership)) {
+    fail(`${path}.ownership is unsupported`)
+  }
   if (!allowedDisplayStatuses.has(entry.displayStatus)) {
     fail(`${path}.displayStatus is unsupported`)
+  }
+  if (entry.ownership === "yeyu") {
+    if (entry.redistributionMode !== "self-operated") {
+      fail(`${path} Yeyu entries must use self-operated redistributionMode`)
+    }
+    if (entry.displayStatus !== "self-operated-ready") {
+      fail(`${path} Yeyu entries must use self-operated-ready displayStatus`)
+    }
+  }
+  if (entry.ownership === "third-party") {
+    if (entry.redistributionMode === "self-operated") {
+      fail(
+        `${path} third-party entries cannot use self-operated redistributionMode`,
+      )
+    }
+    if (entry.displayStatus === "self-operated-ready") {
+      fail(
+        `${path} third-party entries cannot use self-operated-ready displayStatus`,
+      )
+    }
   }
   if (!allowedAuthRequirements.has(entry.authRequired)) {
     fail(`${path}.authRequired is unsupported`)

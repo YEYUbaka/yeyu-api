@@ -33,17 +33,7 @@ const displayStatusLabels: Record<StaticCatalogEntry["displayStatus"], string> =
     "self-operated-ready": "自营候选",
   }
 
-function sourceLabel(entry: StaticCatalogEntry): string {
-  if (entry.slug === "open-meteo-weather") return "Open-Meteo"
-  if (entry.slug === "frankfurter-exchange-rates") return "Frankfurter"
-  if (entry.slug === "nager-date-holidays") return "Nager.Date"
-  if (entry.slug === "worldtimeapi-timezones") return "WorldTimeAPI"
-  return "Yeyu API"
-}
-
 export function StaticCatalogCard({ entry }: StaticCatalogCardProps) {
-  const source = sourceLabel(entry)
-
   return (
     <article
       className="static-catalog-entry"
@@ -98,7 +88,7 @@ export function StaticCatalogCard({ entry }: StaticCatalogCardProps) {
             rel="noopener noreferrer"
             target="_blank"
           >
-            阅读 {source} 官方文档 <span aria-hidden="true">↗</span>
+            阅读 {entry.providerName} 官方文档 <span aria-hidden="true">↗</span>
           </a>
           <a href={entry.sourceUrl} rel="noopener noreferrer" target="_blank">
             查看来源 <span aria-hidden="true">↗</span>

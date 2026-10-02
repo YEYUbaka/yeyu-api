@@ -1,5 +1,17 @@
 import { expect, test } from "@playwright/test"
 
+function expectSameOriginRequests(
+  requestUrls: readonly string[],
+  baseURL: string | undefined,
+) {
+  const expectedOrigin = new URL(baseURL ?? "http://127.0.0.1:4174").origin
+
+  expect(requestUrls.length).toBeGreaterThan(0)
+  for (const requestUrl of requestUrls) {
+    expect(new URL(requestUrl).origin).toBe(expectedOrigin)
+  }
+}
+
 test.describe("static API catalog", () => {
   test("renders reviewed entries without backend requests", async ({
     page,
@@ -17,11 +29,8 @@ test.describe("static API catalog", () => {
     await expect(page.getByText("Open-Meteo 天气与空气质量")).toBeVisible()
     await expect(page.getByText("仅资料汇总").first()).toBeVisible()
 
-    for (const requestUrl of requests) {
-      expect(requestUrl.startsWith(baseURL ?? "http://127.0.0.1:4174")).toBe(
-        true,
-      )
-    }
+    await page.waitForTimeout(250)
+    expectSameOriginRequests(requests, baseURL)
   })
 
   test("searches entries locally", async ({ page }) => {
@@ -44,6 +53,24 @@ test.describe("static API catalog", () => {
 
     await expect(page.getByTestId("static-catalog-entry")).toHaveCount(0)
     await expect(page.getByRole("status")).toContainText("没有找到匹配资料")
+  })
+
+  test("keeps search and category filtering local", async ({
+    page,
+    baseURL,
+  }) => {
+    const requests: string[] = []
+    page.on("request", (request) => requests.push(request.url()))
+
+    await page.goto("/")
+    await page
+      .getByRole("searchbox", { name: "搜索免费 API 资料" })
+      .fill("天气")
+    await page.getByRole("button", { name: "生活与公共数据" }).click()
+    await expect(page.getByTestId("static-catalog-entry")).toHaveCount(1)
+
+    await page.waitForTimeout(250)
+    expectSameOriginRequests(requests, baseURL)
   })
 
   test("filters by category and keeps official links explicit", async ({

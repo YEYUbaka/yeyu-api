@@ -17,6 +17,11 @@ if (-not (Test-Path -LiteralPath $IndexPath -PathType Leaf)) {
     throw "静态产物缺少 index.html：$IndexPath"
 }
 
+$BuildMetadataPath = "E:\AI_projects\yeyu-api\deploy\static-catalog\build-meta.json"
+if (-not (Test-Path -LiteralPath $BuildMetadataPath -PathType Leaf)) {
+    throw "静态产物缺少 build-meta.json，请在干净 commit 上重新构建：$BuildMetadataPath"
+}
+
 $ForbiddenFilePattern = "(^|\.)((env)|(pem)|(key)|(p12)|(pfx))($|\.)|secret|token|password|private"
 $Files = @(Get-ChildItem -LiteralPath $StaticRoot -Recurse -File)
 foreach ($File in $Files) {
@@ -28,6 +33,23 @@ foreach ($File in $Files) {
 $CommitSha = (& git -C $ProjectRoot rev-parse --verify HEAD).Trim()
 if ($CommitSha -notmatch "^[0-9a-f]{7,64}$") {
     throw "无法取得可追溯的 Git commit SHA。"
+}
+
+$WorkingTreeStatus = (& git -C $ProjectRoot status --porcelain --untracked-files=all).Trim()
+if ($WorkingTreeStatus) {
+    throw "当前工作树不是 clean；请先提交变更，再重新构建和打包。"
+}
+
+try {
+    $BuildMetadata = Get-Content -LiteralPath $BuildMetadataPath -Raw | ConvertFrom-Json
+} catch {
+    throw "build-meta.json 不是有效 JSON：$BuildMetadataPath"
+}
+if ($BuildMetadata.commit -ne $CommitSha) {
+    throw "静态产物 commit 与当前 HEAD 不一致；请重新构建后再打包。"
+}
+if ($BuildMetadata.workingTreeClean -ne $true) {
+    throw "静态产物来自非 clean 工作树；请在 clean commit 上重新构建。"
 }
 
 $PackagePath = "E:\AI_projects\yeyu-api\deploy\packages\static-catalog-$CommitSha.zip"

@@ -2,6 +2,8 @@
   {
     "slug": "yeyu-time",
     "name": "时间戳与时区",
+    "providerName": "Yeyu API",
+    "ownership": "yeyu",
     "category": "开发工具",
     "summary": "Yeyu 自营候选：固定参数的时间与时区工具。当前只展示能力，不代表正式域名已经上线。",
     "sourceUrl": "https://github.com/YEYUbaka/yeyu-api",
@@ -17,6 +19,8 @@
   {
     "slug": "yeyu-uuid",
     "name": "UUID 生成",
+    "providerName": "Yeyu API",
+    "ownership": "yeyu",
     "category": "开发工具",
     "summary": "Yeyu 自营候选：不依赖第三方上游的 UUID 工具，静态目录只记录能力和本地实现状态。",
     "sourceUrl": "https://github.com/YEYUbaka/yeyu-api",
@@ -32,6 +36,8 @@
   {
     "slug": "open-meteo-weather",
     "name": "Open-Meteo 天气与空气质量",
+    "providerName": "Open-Meteo",
+    "ownership": "third-party",
     "category": "生活与公共数据",
     "summary": "公开天气数据候选。当前仅做资料汇总，未确认 Yeyu 是否拥有公开代理、缓存或改写响应的许可。",
     "sourceUrl": "https://open-meteo.com/en/terms",
@@ -47,6 +53,8 @@
   {
     "slug": "frankfurter-exchange-rates",
     "name": "Frankfurter 汇率",
+    "providerName": "Frankfurter",
+    "ownership": "third-party",
     "category": "生活与公共数据",
     "summary": "汇率数据候选。代码许可证、央行数据权利和 hosted API 再分发权限需要分别核对。",
     "sourceUrl": "https://frankfurter.dev/",
@@ -62,6 +70,8 @@
   {
     "slug": "nager-date-holidays",
     "name": "Nager.Date 节假日",
+    "providerName": "Nager.Date",
+    "ownership": "third-party",
     "category": "生活与公共数据",
     "summary": "节假日数据候选。当前只提供官方项目资料入口，不将 hosted API 包装成 Yeyu 公共接口。",
     "sourceUrl": "https://github.com/nager/Nager.Date",
@@ -77,6 +87,8 @@
   {
     "slug": "worldtimeapi-timezones",
     "name": "WorldTimeAPI 时区数据",
+    "providerName": "WorldTimeAPI",
+    "ownership": "third-party",
     "category": "网络与站点查询",
     "summary": "时区数据候选。条款、免费额度、缓存和再分发边界尚未取得完整证据，暂时只展示官方入口。",
     "sourceUrl": "https://worldtimeapi.org/",

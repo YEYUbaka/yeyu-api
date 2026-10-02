@@ -3,6 +3,8 @@ export type StaticCatalogRedistributionMode =
   | "reference-only"
   | "link-only"
 
+export type StaticCatalogOwnership = "yeyu" | "third-party"
+
 export type StaticCatalogDisplayStatus =
   | "candidate"
   | "verified-reference"
@@ -19,6 +21,8 @@ export type StaticCatalogStability = "unknown" | "experimental" | "stable"
 export interface StaticCatalogEntry {
   slug: string
   name: string
+  providerName: string
+  ownership: StaticCatalogOwnership
   category: string
   summary: string
   sourceUrl: string

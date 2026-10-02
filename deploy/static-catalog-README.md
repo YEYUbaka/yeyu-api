@@ -13,7 +13,7 @@ pnpm --dir E:\AI_projects\yeyu-api\frontend run build:static-catalog
 pnpm --dir E:\AI_projects\yeyu-api\frontend exec playwright test --config=E:\AI_projects\yeyu-api\frontend\playwright.static.config.ts
 ```
 
-构建产物位于 `E:\AI_projects\yeyu-api\deploy\static-catalog\`，入口为 `index.html`。该目录由 Git 忽略，不应直接提交；需要交付时使用 `E:\AI_projects\yeyu-api\deploy\scripts\package-static-catalog.ps1` 生成带 commit 标识的压缩包和文件清单。
+构建产物位于 `E:\AI_projects\yeyu-api\deploy\static-catalog\`，入口为 `index.html`，另有不参与页面请求的 `build-meta.json` provenance 文件。该目录由 Git 忽略，不应直接提交；需要交付时必须在 clean commit 上重新构建，再使用 `E:\AI_projects\yeyu-api\deploy\scripts\package-static-catalog.ps1` 生成带 commit 标识的压缩包和文件清单。脚本会拒绝旧产物、脏工作树和 commit 不匹配的产物。
 
 ## 目录边界
 
