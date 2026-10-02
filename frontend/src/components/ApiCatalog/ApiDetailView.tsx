@@ -48,7 +48,7 @@ function parameterExamples(detail: ApiDetail): QueryExample[] {
 }
 
 function quoteCurlArgument(value: string): string {
-  return `'${value.replaceAll("'", "'\\''")}'`
+  return `'${value.replace(/'/g, "'\\''")}'`
 }
 
 function buildCodeExamples(detail: ApiDetail) {
@@ -124,8 +124,8 @@ function buildCodeExamples(detail: ApiDetail) {
 
 function readableCacheKey(key: string) {
   return key
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase())
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character: string) => character.toUpperCase())
 }
 
 interface ApiDetailViewProps {
@@ -143,7 +143,7 @@ export function ApiDetailView({ detail }: ApiDetailViewProps) {
   return (
     <div className="api-detail-page">
       <div className="api-detail-breadcrumbs">
-        <Link to="/catalog" className="public-text-link">
+        <Link to="/catalog" search={{ page: 1 }} className="public-text-link">
           ← 返回公开目录
         </Link>
         <span aria-hidden="true">/</span>

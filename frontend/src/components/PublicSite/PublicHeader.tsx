@@ -18,7 +18,12 @@ function NavigationLinks({ onNavigate }: NavigationLinksProps) {
       <Link to="/" className={linkClassName} onClick={onNavigate}>
         首页
       </Link>
-      <Link to="/catalog" className={linkClassName} onClick={onNavigate}>
+      <Link
+        to="/catalog"
+        search={{ page: 1 }}
+        className={linkClassName}
+        onClick={onNavigate}
+      >
         API 目录
       </Link>
       <Link to="/" hash="usage" className={linkClassName} onClick={onNavigate}>

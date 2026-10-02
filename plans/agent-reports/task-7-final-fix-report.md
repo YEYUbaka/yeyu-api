@@ -204,3 +204,37 @@ git diff --check
 提交主题：`fix: close final catalog review findings`
 
 提交 SHA 由最终 `git commit` 结果返回。
+
+## 本轮 TypeScript Findings 收口追加记录（2026-10-02）
+
+本轮严格限制在当前 tsc 暴露的 7 个错误：
+
+- `ApiDetailView.tsx` 将两个 `replaceAll` 改为 ES2020 可用的全局正则 `replace`；回调参数显式标注为 `string`，保持原有输出语义。
+- `ApiDetailView.tsx`、`PublicHeader.tsx`、`PublicFooter.tsx` 和 `routes/index.tsx` 中返回 `/catalog` 的 TanStack Link 均补充 `search={{ page: 1 }}`。
+- 未修改 `frontend/src/routeTree.gen.ts`，未修改后端、Playwright、旧项目、服务器或凭据。
+
+### 本轮修改文件
+
+- `E:\AI_projects\yeyu-api\frontend\src\components\ApiCatalog\ApiDetailView.tsx`
+- `E:\AI_projects\yeyu-api\frontend\src\components\PublicSite\PublicFooter.tsx`
+- `E:\AI_projects\yeyu-api\frontend\src\components\PublicSite\PublicHeader.tsx`
+- `E:\AI_projects\yeyu-api\frontend\src\routes\index.tsx`
+- `E:\AI_projects\yeyu-api\plans\agent-reports\task-7-final-fix-report.md`
+
+### 本轮真实验证结果
+
+1. `pnpm exec tsc -p E:\AI_projects\yeyu-api\frontend\tsconfig.build.json`
+   - 退出码：`0`。
+   - 输出：无；此前复现的 7 个错误不再出现。
+2. `pnpm exec biome check --no-errors-on-unmatched --files-ignore-unknown=true src tests`（工作目录：`E:\AI_projects\yeyu-api\frontend`）
+   - 退出码：`0`。
+   - 输出：`Checked 74 files in 41ms. No fixes applied.`
+3. `git diff --check`（工作目录：`E:\AI_projects\yeyu-api`）
+   - 退出码：`0`。
+   - 未报告 whitespace 错误；Git 仅输出本次源码文件及已有计划文件的 LF/CRLF 转换提示。
+
+### 本轮未验证风险
+
+- 本轮未重新执行 Vite build、Playwright、后端集成测试或真实线上验收；这些边界不属于本次 7 个 tsc 错误的最小修复。
+- 工作树中原有的其他计划/报告改动未纳入本次提交，需继续由其原任务处理。
+- 本轮没有重新生成或手工编辑 `routeTree.gen.ts`。

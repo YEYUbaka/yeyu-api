@@ -48,7 +48,7 @@ function CatalogPreview() {
             这里展示后端公开目录中的接口，不展示虚构卡片或调用统计。
           </p>
         </div>
-        <Link className="public-text-link" to="/catalog">
+        <Link className="public-text-link" to="/catalog" search={{ page: 1 }}>
           搜索完整目录 <span aria-hidden="true">→</span>
         </Link>
       </div>
