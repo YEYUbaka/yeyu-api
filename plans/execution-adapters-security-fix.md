@@ -90,7 +90,7 @@
 - [ ] **Step 1: Run focused and regression tests.** Run `conda run -n yeyu-api pytest -q backend\tests\services\test_execution.py` and the existing backend regression suite available in the project environment.
 - [ ] **Step 2: Run static checks.** Run Ruff on the changed Python files, `python -m compileall` for `backend\app` and `backend\tests`, and `git diff --check`.
 - [ ] **Step 3: Review the diff and scope.** Confirm no quota/cache/policy/routes/models/database/trial-pool files changed, no content provider was registered, no secrets or public-network calls were added, and no stack/URL/header data enters responses.
-- [ ] **Step 4: Commit and push after review.** Create the fix commit, then push only after the final local review; the user has explicitly authorized pushing to `origin/main`.
+- [x] **Step 4: Commit and push after review.** `0e8c3fa` and the follow-up `ad02654` were committed and pushed to the user-authorized `origin/main` after fresh local verification.
 - [ ] **Step 5: Report verification boundaries.** Explicitly separate verified local tests/static checks from unverified Docker, real-network, Redis, PostgreSQL, DNS, SMTP, OAuth, and production acceptance.
 
 ## Self-review checklist
@@ -107,8 +107,9 @@
 ## Fresh verification evidence (2026-10-02)
 
 - The pre-fix isolated execution-module run produced 18 expected behavior failures and 19 passes; no syntax or collection error occurred in that isolated run.
-- `conda run -n yeyu-api pytest -q --confcutdir="E:\AI_projects\yeyu-api\backend\tests\services" "E:\AI_projects\yeyu-api\backend\tests\services\test_execution.py"` → `37 passed` after the fix.
+- `conda run -n yeyu-api pytest -q --confcutdir="E:\AI_projects\yeyu-api\backend\tests\services" "E:\AI_projects\yeyu-api\backend\tests\services\test_execution.py"` → `51 passed` after the coverage and result-envelope fix.
 - Ruff on the four changed Python files → `All checks passed`.
 - `conda run -n yeyu-api python -m compileall -q "E:\AI_projects\yeyu-api\backend\app" "E:\AI_projects\yeyu-api\backend\tests"` → exit code 0.
 - `git diff --check` → no whitespace errors; only Git's LF/CRLF normalization warnings.
 - The normal pytest collection path was attempted without injecting or printing settings values and failed during settings validation because required local variables were absent.
+- GitHub Actions for `ad02654` ultimately passed Backend (`36971010797`), Docker Compose (`36971010814`), Zizmor (`36971010772`), and Playwright (`36971010710` after one unrelated existing frontend E2E retry).
