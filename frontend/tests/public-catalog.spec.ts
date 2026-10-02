@@ -232,6 +232,22 @@ async function mockCatalogApi(page: Page, detail = timeDetail) {
   })
 }
 
+test("Anonymous users can browse the public home without auth setup", async ({
+  page,
+}) => {
+  await mockCatalogApi(page)
+  await page.goto("/")
+
+  await expect(page).toHaveURL("/")
+  await expect(
+    page.getByRole("heading", {
+      name: "给学生和个人开发者的免费 API 工具箱",
+    }),
+  ).toBeVisible()
+  await expect(page.getByRole("navigation", { name: "公共导航" })).toBeVisible()
+  await expect(page).not.toHaveURL(/\/login$/)
+})
+
 test("Anonymous users can browse the real public catalog", async ({ page }) => {
   await mockCatalogApi(page)
   await page.goto("/catalog")

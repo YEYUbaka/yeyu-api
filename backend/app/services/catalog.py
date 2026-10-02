@@ -111,6 +111,7 @@ class ApiCatalogService:
                     ApiDefinition.slug.ilike(pattern),
                     ApiDefinition.name.ilike(pattern),
                     ApiDefinition.summary.ilike(pattern),
+                    ApiDefinition.path.ilike(pattern),
                 )
             )
         if category:

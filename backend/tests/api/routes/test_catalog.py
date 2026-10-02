@@ -130,6 +130,27 @@ def test_public_catalog_hides_draft_and_disabled(
     ]
 
 
+def test_public_catalog_search_matches_api_path(
+    catalog_environment: tuple[TestClient, object],
+) -> None:
+    client, engine = catalog_environment
+    add_catalog(
+        engine,
+        slug="time",
+        name="Clock API",
+        summary="Returns the current clock value",
+        path="/v1/tools/time",
+    )
+
+    response = client.get(
+        CATALOG_PATH,
+        params={"query": "/v1/tools/time", "page": 1, "page_size": 20},
+    )
+
+    assert response.status_code == 200
+    assert [item["slug"] for item in response.json()["data"]] == ["time"]
+
+
 def test_catalog_detail_contains_api_key_requirement(
     catalog_environment: tuple[TestClient, object],
 ) -> None:
