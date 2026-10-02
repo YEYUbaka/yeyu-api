@@ -56,7 +56,7 @@ Error: Environment variable FIRST_SUPERUSER is undefined
 仅在进程内注入非真实测试值后重试：
 
 ```text
-$env:FIRST_SUPERUSER='playwright@example.invalid'; $env:FIRST_SUPERUSER_PASSWORD='Playwright-Only-Password-123!'; pnpm exec playwright test tests/public-catalog.spec.ts
+$env:FIRST_SUPERUSER='<NON_SECRET_TEST_EMAIL>'; $env:FIRST_SUPERUSER_PASSWORD='<NON_SECRET_TEST_VALUE>'; pnpm exec playwright test tests/public-catalog.spec.ts
 exit 1
 browserType.launch: Executable doesn't exist ... chrome-headless-shell.exe
 1 failed [setup] auth.setup.ts; 5 did not run
