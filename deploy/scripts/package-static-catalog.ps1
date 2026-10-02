@@ -35,7 +35,7 @@ if ($CommitSha -notmatch "^[0-9a-f]{7,64}$") {
     throw "无法取得可追溯的 Git commit SHA。"
 }
 
-$WorkingTreeStatus = (& git -C $ProjectRoot status --porcelain --untracked-files=all).Trim()
+$WorkingTreeStatus = (& git -C $ProjectRoot status --porcelain --untracked-files=all | Out-String).Trim()
 if ($WorkingTreeStatus) {
     throw "当前工作树不是 clean；请先提交变更，再重新构建和打包。"
 }
