@@ -2,7 +2,7 @@
 
 日期：2026-10-02
 项目：`E:\AI_projects\yeyu-api`
-实现提交：待提交（代码提交后回填）
+实现提交：`c13adce`
 
 ## 1. 实现范围
 
@@ -132,4 +132,4 @@ Checked 15 files in 14ms. No fixes applied.
 
 实现代码提交主题：`feat: add public catalog and api detail pages`
 
-提交 SHA：待提交后回填。
+提交 SHA：`c13adce`（实现提交；报告随后单独提交）。
