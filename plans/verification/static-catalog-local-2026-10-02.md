@@ -1,13 +1,13 @@
-# 静态 API 资料册本地验证证据
+# 静态 API 收集目录本地验证证据
 
 验证日期：2026-10-02（Asia/Hong_Kong）
 项目：`E:\AI_projects\yeyu-api`
-验证对应的静态实现提交：`ab8f043a6197926346fdd8bc4ce6e54ce632567f`
+验证对应的静态实现提交：`e44a1c06f4d4adaa2ba58543b3a6838220fed83a`
 远程分支：`origin/main`
 
 ## 验证范围
 
-本记录只证明本地静态资料册的目录校验、构建、浏览器行为和可追溯打包。没有执行服务器、DNS、证书、Nginx、远程上传或线上验收，也没有证明动态 FastAPI 平台已经完成。
+本记录只证明本地静态 API 收集目录的范围校验、构建、浏览器行为和可追溯打包。页面只做本地搜索/筛选和官方链接展示，不执行 API 调用。没有执行服务器、DNS、证书、Nginx、远程上传或线上验收；历史动态平台不属于当前交付范围。
 
 ## 命令与结果
 
@@ -18,7 +18,7 @@
    Static catalog validation passed: 6 entries
    ```
 
-   校验包含必填字段、HTTPS 来源、状态枚举、ownership 与 redistributionMode 边界、日期、重复 slug、敏感字段和值模式。
+   校验包含必填字段、HTTPS 来源、第三方 ownership、资料/链接状态、日期、重复 slug、敏感字段和值模式；当前校验器拒绝 Yeyu 自营条目。
 
 2. TypeScript：
 
@@ -31,7 +31,7 @@
 
    ```text
    pnpm --dir E:\AI_projects\yeyu-api\frontend exec biome check ...
-   Checked 11 files in 12ms. No fixes applied.
+   Checked 9 files in 20ms. No fixes applied.
    ```
 
 4. 静态构建：
@@ -39,7 +39,7 @@
    ```text
    pnpm --dir E:\AI_projects\yeyu-api\frontend run build:static-catalog
    ✓ 20 modules transformed.
-   ✓ built in 282ms
+   ✓ built in 279ms
    ```
 
    `E:\AI_projects\yeyu-api\deploy\static-catalog\build-meta.json` 记录：
@@ -47,7 +47,7 @@
    ```json
    {
      "project": "yeyu-api",
-     "commit": "ab8f043a6197926346fdd8bc4ce6e54ce632567f",
+     "commit": "e44a1c06f4d4adaa2ba58543b3a6838220fed83a",
      "workingTreeClean": true
    }
    ```
@@ -66,14 +66,18 @@
 
    ```text
    E:\AI_projects\yeyu-api\deploy\scripts\package-static-catalog.ps1
-   Static catalog package created: ...\static-catalog-ab8f043a6197926346fdd8bc4ce6e54ce632567f.zip
-   Manifest created: ...\static-catalog-ab8f043a6197926346fdd8bc4ce6e54ce632567f.manifest.json
+   Static catalog package created: ...\static-catalog-e44a1c06f4d4adaa2ba58543b3a6838220fed83a.zip
+   Manifest created: ...\static-catalog-e44a1c06f4d4adaa2ba58543b3a6838220fed83a.manifest.json
    ```
 
-   manifest 中的 commit 与 build metadata、当前 HEAD 一致；包内文件为 `index.html`、JS、CSS 和 `build-meta.json`。旧 commit 产物曾被门禁拒绝，原因是“静态产物 commit 与当前 HEAD 不一致”。
+   manifest 中的 commit 与 build metadata、当前 HEAD 一致；包内文件为 `index.html`、JS、CSS 和 `build-meta.json`。包内没有 Secret、后端、数据库、缓存或动态 API 资源。
+
+7. 独立范围审查：
+
+   `E:\AI_projects\yeyu-api\plans\agent-reports\static-api-directory-scope-review.md` 记录了 Peirce 的只读审查。审查确认静态入口符合纯资料收集边界，同时发现并推动修正了默认动态构建、默认测试和 CI 残留；动态流程现仅手动保留为历史检查。
 
 ## 未验证和后续门禁
 
-- SMTP、GitHub OAuth、PostgreSQL、Redis、动态 API Key、限流和管理端仍未完成本地完整验收。
+- SMTP、GitHub OAuth、PostgreSQL、Redis、动态 API Key、限流和管理端不属于当前静态目录交付范围；仓库中的历史动态代码未作为本产品发布或验收。
 - 静态站正式发布前必须重新只读检查服务器、DNS、TLS、80/443 和现有 Nginx，并等待用户确认后才允许上传或改配置。
 - 正式上线后的 HTTPS、移动端、旧站和 `new.api.yeyubaka.top` 不受本地证据覆盖，不能据此宣称线上通过。

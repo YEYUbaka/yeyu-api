@@ -36,6 +36,6 @@
 
 ## 阶段 5：静态发布准备（不执行上线）
 
-- [ ] 生成带 commit SHA 的静态发布包和 manifest。
+- [x] 在 clean commit `e44a1c06f4d4adaa2ba58543b3a6838220fed83a` 上生成带 commit SHA 的静态发布包和 manifest。
 - [ ] 只读检查服务器资源、DNS、80/443、Nginx 和冲突服务。
 - [ ] 发布前单独说明新增目录/vhost、验证方式和回滚方式，等待用户确认后才可上传或改 Nginx。
