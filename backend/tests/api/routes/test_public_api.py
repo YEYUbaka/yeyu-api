@@ -60,11 +60,21 @@ class InMemoryQuotaRedis:
     def __init__(self) -> None:
         self.counters: dict[str, int] = {}
         self.leases: dict[str, dict[str, int]] = {}
+        self.fences: dict[str, set[str]] = {}
+        self.cancellations: dict[str, dict[str, int]] = {}
         self.now = 1_000
 
     def eval(self, script: str, numkeys: int, *args: object) -> object:
         keys = [str(value) for value in args[:numkeys]]
         values = [str(value) for value in args[numkeys:]]
+        if "SISMEMBER" in script and "ZREMRANGEBYSCORE" not in script:
+            key = keys[0]
+            now, ttl, token = int(values[0]), int(values[1]), values[2]
+            if token not in self.fences.get(keys[1], set()):
+                return 0
+            leases = self.leases.setdefault(key, {})
+            leases[token] = now + ttl
+            return 1
         if "INCRBY" in script:
             limits = [int(value) for value in values[:-1]]
             counts = [self.counters.get(key, 0) + 1 for key in keys]
@@ -104,7 +114,7 @@ class InMemoryQuotaRedis:
             ]
             return [1, min(remaining), 0, 0, *remaining]
 
-        if "ZREMRANGEBYSCORE" in script:
+        if "ZREMRANGEBYSCORE" in script and "latest_cancel" not in script:
             key = keys[0]
             now, limit, ttl, token = (
                 int(values[0]),
@@ -112,24 +122,60 @@ class InMemoryQuotaRedis:
                 int(values[2]),
                 values[3],
             )
+            cancellations = self.cancellations.setdefault(keys[2], {})
+            for current_token, expires_at in list(cancellations.items()):
+                if expires_at <= now:
+                    del cancellations[current_token]
+            if token in cancellations:
+                return [-1, 0, ttl]
+            fenced = len(self.fences.get(keys[1], set()))
+            if fenced >= limit:
+                return [0, fenced, ttl]
             leases = self.leases.setdefault(key, {})
             for current_token, expires_at in list(leases.items()):
                 if expires_at <= now:
                     del leases[current_token]
             if len(leases) >= limit:
-                retry = max(1, min(leases.values()) - now)
-                return [0, len(leases), retry]
+                return [0, len(leases), ttl]
             leases[token] = now + ttl
+            self.fences.setdefault(keys[1], set()).add(token)
             return [1, len(leases), ttl]
+
+        if "KEYS[3]" in script and "ZREM" in script:
+            key = keys[0]
+            token = values[0]
+            now, tombstone_ttl = int(values[1]), int(values[2])
+            cancellations = self.cancellations.setdefault(keys[2], {})
+            for current_token, expires_at in list(cancellations.items()):
+                if expires_at <= now:
+                    del cancellations[current_token]
+            cancellations[token] = now + tombstone_ttl
+            leases = self.leases.setdefault(key, {})
+            leases.pop(token, None)
+            markers = self.fences.setdefault(keys[1], set())
+            markers.discard(token)
+            if not markers:
+                self.fences.pop(keys[1], None)
+            if not leases:
+                self.leases.pop(key, None)
+            return 1
 
         if "ZREM" in script:
             key = keys[0]
             token = values[0]
             leases = self.leases.setdefault(key, {})
             removed = int(leases.pop(token, None) is not None)
+            markers = self.fences.setdefault(keys[1], set())
+            markers.discard(token)
+            if not markers:
+                self.fences.pop(keys[1], None)
             if not leases:
                 self.leases.pop(key, None)
             return removed
+
+        if "SADD" in script:
+            self.fences.setdefault(keys[1], set()).add(values[0])
+            return 1
 
         raise AssertionError(f"unexpected Redis script: {script}")
 

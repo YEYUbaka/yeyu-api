@@ -10,6 +10,8 @@ from redis.exceptions import RedisError
 
 from app.core.config import settings
 
+LEASE_CANCEL_TOMBSTONE_TTL_SECONDS = settings.REDIS_LEASE_CANCEL_TOMBSTONE_TTL_SECONDS
+
 
 class RedisUnavailable(RuntimeError):
     """Redis could not perform a required atomic operation."""
@@ -87,16 +89,20 @@ local now = tonumber(ARGV[1])
 local limit = tonumber(ARGV[2])
 local ttl = tonumber(ARGV[3])
 local token = ARGV[4]
+redis.call('ZREMRANGEBYSCORE', KEYS[3], '-inf', now)
+if redis.call('ZSCORE', KEYS[3], token) then
+    return {-1, 0, ttl}
+end
+local fenced = redis.call('SCARD', KEYS[2])
+if fenced >= limit then
+    return {0, fenced, ttl}
+end
 redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now)
 local active = redis.call('ZCARD', KEYS[1])
 if active >= limit then
-    local first = redis.call('ZRANGE', KEYS[1], 0, 0, 'WITHSCORES')
-    local retry = ttl
-    if #first >= 2 then
-        retry = math.max(1, tonumber(first[2]) - now)
-    end
-    return {0, active, retry}
+    return {0, active, ttl}
 end
+redis.call('SADD', KEYS[2], token)
 redis.call('ZADD', KEYS[1], now + ttl, token)
 local latest = redis.call('ZREVRANGE', KEYS[1], 0, 0, 'WITHSCORES')
 local key_ttl = ttl
@@ -109,10 +115,61 @@ return {1, active + 1, ttl}
 
     lease_release_script = """
 local removed = redis.call('ZREM', KEYS[1], ARGV[1])
+redis.call('SREM', KEYS[2], ARGV[1])
+if redis.call('SCARD', KEYS[2]) == 0 then
+    redis.call('DEL', KEYS[2])
+end
 if removed == 1 and redis.call('ZCARD', KEYS[1]) == 0 then
     redis.call('DEL', KEYS[1])
 end
 return removed
+"""
+
+    lease_cancel_script = """
+local token = ARGV[1]
+local now = tonumber(ARGV[2])
+local tombstone_ttl = tonumber(ARGV[3])
+redis.call('ZREMRANGEBYSCORE', KEYS[3], '-inf', now)
+redis.call('ZADD', KEYS[3], now + tombstone_ttl, token)
+local latest_cancel = redis.call('ZREVRANGE', KEYS[3], 0, 0, 'WITHSCORES')
+local cancel_key_ttl = tombstone_ttl
+if #latest_cancel >= 2 then
+    cancel_key_ttl = math.max(1, math.ceil(tonumber(latest_cancel[2]) - now))
+end
+redis.call('EXPIRE', KEYS[3], cancel_key_ttl)
+local removed = redis.call('ZREM', KEYS[1], token)
+redis.call('SREM', KEYS[2], token)
+if redis.call('SCARD', KEYS[2]) == 0 then
+    redis.call('DEL', KEYS[2])
+end
+if removed == 1 and redis.call('ZCARD', KEYS[1]) == 0 then
+    redis.call('DEL', KEYS[1])
+end
+return 1
+"""
+
+    lease_fence_script = """
+local token = ARGV[1]
+redis.call('SADD', KEYS[2], token)
+return 1
+"""
+
+    lease_renew_script = """
+local now = tonumber(ARGV[1])
+local ttl = tonumber(ARGV[2])
+local token = ARGV[3]
+if redis.call('SISMEMBER', KEYS[2], token) == 0 then
+    return 0
+end
+local current = redis.call('ZSCORE', KEYS[1], token)
+redis.call('ZADD', KEYS[1], now + ttl, token)
+local latest = redis.call('ZREVRANGE', KEYS[1], 0, 0, 'WITHSCORES')
+local key_ttl = ttl
+if #latest >= 2 then
+    key_ttl = math.max(1, math.ceil(tonumber(latest[2]) - now))
+end
+redis.call('EXPIRE', KEYS[1], key_ttl)
+return 1
 """
 
     def __init__(self, client: Any | None = None, *, url: str | None = None) -> None:
@@ -242,8 +299,10 @@ return removed
             raise ValueError("limit and ttl_seconds must be positive")
         raw = self._eval(
             self.lease_acquire_script,
-            1,
+            3,
             key,
+            self._fence_key(key),
+            self._cancel_key(key),
             str(int(time.time()) if now_seconds is None else now_seconds),
             str(limit),
             str(ttl_seconds),
@@ -254,6 +313,8 @@ return removed
             status, active, retry_after = (int(values[0]), int(values[1]), int(values[2]))
         except (IndexError, TypeError, ValueError) as exc:
             raise RedisUnavailable("Redis returned an invalid lease result") from exc
+        if status == -1:
+            raise RedisUnavailable("Redis lease token was cancelled")
         if status not in {0, 1}:
             raise RedisUnavailable("Redis returned an invalid lease status")
         return LeaseResult(
@@ -263,11 +324,87 @@ return removed
         )
 
     def release_lease(self, *, key: str, token: str) -> bool:
-        raw = self._eval(self.lease_release_script, 1, key, token)
+        raw = self._eval(
+            self.lease_release_script,
+            2,
+            key,
+            self._fence_key(key),
+            token,
+        )
         try:
             return int(raw) == 1
         except (TypeError, ValueError) as exc:
             raise RedisUnavailable("Redis returned an invalid release result") from exc
+
+    @staticmethod
+    def _fence_key(key: str) -> str:
+        return f"{key}:fence"
+
+    @staticmethod
+    def _cancel_key(key: str) -> str:
+        return f"{key}:cancel"
+
+    def cancel_lease(self, *, key: str, token: str) -> bool:
+        raw = self._eval(
+            self.lease_cancel_script,
+            3,
+            key,
+            self._fence_key(key),
+            self._cancel_key(key),
+            token,
+            str(int(time.time())),
+            str(LEASE_CANCEL_TOMBSTONE_TTL_SECONDS),
+        )
+        try:
+            value = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise RedisUnavailable("Redis returned an invalid lease cancel result") from exc
+        if value not in {0, 1}:
+            raise RedisUnavailable("Redis returned an invalid lease cancel status")
+        return value == 1
+
+    def fence_lease(self, *, key: str, token: str) -> bool:
+        raw = self._eval(
+            self.lease_fence_script,
+            2,
+            key,
+            self._fence_key(key),
+            token,
+        )
+        try:
+            value = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise RedisUnavailable("Redis returned an invalid lease fence result") from exc
+        if value not in {0, 1}:
+            raise RedisUnavailable("Redis returned an invalid lease fence status")
+        return value == 1
+
+    def renew_lease(
+        self,
+        *,
+        key: str,
+        token: str,
+        ttl_seconds: int,
+        now_seconds: int | None = None,
+    ) -> bool:
+        if ttl_seconds <= 0:
+            raise ValueError("ttl_seconds must be positive")
+        raw = self._eval(
+            self.lease_renew_script,
+            2,
+            key,
+            self._fence_key(key),
+            str(int(time.time()) if now_seconds is None else now_seconds),
+            str(ttl_seconds),
+            token,
+        )
+        try:
+            value = int(raw)
+        except (TypeError, ValueError) as exc:
+            raise RedisUnavailable("Redis returned an invalid lease renewal result") from exc
+        if value not in {0, 1}:
+            raise RedisUnavailable("Redis returned an invalid lease renewal status")
+        return value == 1
 
     def get(self, key: str) -> str | bytes | None:
         try:

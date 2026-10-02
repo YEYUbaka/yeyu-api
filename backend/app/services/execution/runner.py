@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+import logging
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime
@@ -24,6 +25,7 @@ from app.services.execution.registry import AdapterRegistry, UnknownApiSlug
 
 DEFAULT_MAX_WORKERS = 8
 MAX_WORKERS = 64
+logger = logging.getLogger(__name__)
 
 
 class CacheServiceLike(Protocol):
@@ -53,6 +55,61 @@ class CacheServiceLike(Protocol):
         now: datetime,
         stale_reason: str,
     ) -> Any | None: ...
+
+
+class ExecutionCompletion:
+    """Release a caller-owned resource only after the adapter future is done."""
+
+    def __init__(
+        self,
+        callback: Callable[[], None],
+        *,
+        on_pending: Callable[[], None] | None = None,
+    ) -> None:
+        self._callback = callback
+        self._on_pending = on_pending
+        self._lock = Lock()
+        self._pending = False
+        self._completed = False
+        self._callback_in_progress = False
+
+    def mark_pending(self) -> None:
+        with self._lock:
+            if self._completed or self._pending:
+                return
+            self._pending = True
+            on_pending = self._on_pending
+        if on_pending is not None:
+            try:
+                on_pending()
+            except Exception:
+                with self._lock:
+                    self._pending = False
+                raise
+
+    def complete(self) -> None:
+        with self._lock:
+            if self._completed or self._callback_in_progress:
+                return
+            self._pending = False
+            self._callback_in_progress = True
+            callback = self._callback
+        try:
+            callback()
+        except Exception:
+            logger.warning("execution completion callback failed")
+            with self._lock:
+                self._callback_in_progress = False
+            return
+        with self._lock:
+            self._callback_in_progress = False
+            self._completed = True
+
+    def complete_if_idle(self) -> None:
+        with self._lock:
+            pending = self._pending
+        if not pending:
+            self.complete()
 
 
 class ApiRunner:
@@ -141,6 +198,8 @@ class ApiRunner:
         adapter: ApiAdapter,
         context: ExecutionContext,
         params: Mapping[str, Any],
+        *,
+        completion: ExecutionCompletion | None = None,
     ) -> AdapterResult:
         started = monotonic()
         timeout_seconds = context.timeout_ms / 1000
@@ -152,11 +211,18 @@ class ApiRunner:
                 self._slots.release()
                 raise UpstreamError("adapter runner is closed")
             try:
+                if completion is not None:
+                    completion.mark_pending()
                 future = self._executor.submit(adapter.execute, context, params)
             except Exception as exc:
                 self._slots.release()
+                if completion is not None:
+                    completion.complete()
                 raise UpstreamError("adapter execution could not be scheduled") from exc
             future.add_done_callback(self._release_slot)
+            if completion is not None:
+                completion.mark_pending()
+                future.add_done_callback(lambda _future: completion.complete())
 
         remaining = timeout_seconds - (monotonic() - started)
         if remaining <= 0:
@@ -233,6 +299,8 @@ class ApiRunner:
         slug: str,
         context: ExecutionContext,
         params: Mapping[str, Any],
+        *,
+        completion: ExecutionCompletion | None = None,
     ) -> ApiResponse:
         try:
             adapter = self.registry.get(slug)
@@ -273,7 +341,12 @@ class ApiRunner:
         result: AdapterResult | None = None
         error: ExecutionError | None = None
         try:
-            candidate = self._run_adapter(adapter, context, safe_params)
+            candidate = self._run_adapter(
+                adapter,
+                context,
+                safe_params,
+                completion=completion,
+            )
             if not isinstance(candidate, AdapterResult):
                 raise UpstreamError("adapter returned an invalid result")
             finite_json_bytes(candidate.data, max_bytes=adapter.max_response_bytes)
@@ -341,4 +414,4 @@ class ApiRunner:
         )
 
 
-__all__ = ["ApiRunner", "CacheServiceLike"]
+__all__ = ["ApiRunner", "CacheServiceLike", "ExecutionCompletion"]

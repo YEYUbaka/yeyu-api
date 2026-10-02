@@ -26,9 +26,9 @@ from app.services.execution.models import (
     ExecutionContext,
 )
 from app.services.execution.registry import BUILTIN_SLUGS
-from app.services.execution.runner import ApiRunner
+from app.services.execution.runner import ApiRunner, ExecutionCompletion
 from app.services.policy import PolicyDenied, PolicyService
-from app.services.quota import QuotaDatabaseUnavailable
+from app.services.quota import QuotaDatabaseUnavailable, QuotaLease
 from app.services.redis import RedisStore, RedisUnavailable
 
 router = APIRouter(prefix="/tools", tags=["public-api"])
@@ -254,30 +254,47 @@ def execute_tool(
         request.state.error_category = decision.code or "policy_denied"
         return _policy_response(decision, request_id)
 
+    lease: QuotaLease | None = None
+    completion: ExecutionCompletion | None = None
     try:
-        with policy.acquire(
+        lease = policy.acquire(
             principal,
             definition,
             client_ip,
             now,
             decision=decision,
-        ):
-            context = ExecutionContext(
-                request_id=request_id,
-                api_slug=slug,
-                api_key_id=principal.api_key_id,
-                user_id=principal.user_id,
-                client_ip=client_ip,
-                timeout_ms=TOOL_TIMEOUT_MS,
-                now=now,
-            )
-            response = runner.run(slug, context, params)
+        )
+        completion = ExecutionCompletion(
+            lease.release,
+            on_pending=lease.start_renewal,
+        )
+        context = ExecutionContext(
+            request_id=request_id,
+            api_slug=slug,
+            api_key_id=principal.api_key_id,
+            user_id=principal.user_id,
+            client_ip=client_ip,
+            timeout_ms=TOOL_TIMEOUT_MS,
+            now=now,
+        )
+        response = runner.run(
+            slug,
+            context,
+            params,
+            completion=completion,
+        )
+        completion.complete_if_idle()
     except PolicyDenied as exc:
         request.state.error_category = exc.decision.code or "policy_denied"
         return _policy_response(exc.decision, request_id)
     except (RedisUnavailable, QuotaDatabaseUnavailable, SQLAlchemyError):
         request.state.error_category = "quota_unavailable"
         return _quota_unavailable(request_id)
+    finally:
+        if completion is not None:
+            completion.complete_if_idle()
+        elif lease is not None:
+            lease.release()
 
     request.state.cache_hit = bool(response.meta.get("cache_hit", False))
     request.state.stale = bool(response.meta.get("stale", False))

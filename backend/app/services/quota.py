@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, time, timedelta
+from heapq import heappop, heappush
+from itertools import count
+from threading import Condition, Event, Lock, Thread, Timer
+from time import monotonic
 from typing import Any, Literal
 from uuid import UUID, uuid4
 
@@ -12,10 +17,16 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlmodel import Session, select
 
 from app.models import UsageDaily
-from app.services.redis import LimitResult, RedisStore
+from app.services.redis import LimitResult, RedisStore, RedisUnavailable
 
 MINUTE_WINDOW_SECONDS = 60
 DEFAULT_CONCURRENCY_LEASE_TTL_SECONDS = 120
+_LEASE_RENEW_INTERVAL_FRACTION = 3
+_MIN_LEASE_RENEW_INTERVAL_SECONDS = 0.5
+_CLEANUP_QUEUE_SIZE = 1024
+_CLEANUP_RETRY_MIN_SECONDS = 0.5
+_CLEANUP_RETRY_MAX_SECONDS = 30.0
+logger = logging.getLogger(__name__)
 
 
 class QuotaDatabaseUnavailable(RuntimeError):
@@ -37,6 +48,156 @@ class DailyUsageResult:
     retry_after_seconds: int | None = None
 
 
+CleanupOperation = Literal["release", "cancel"]
+
+
+class _LeaseCleanupScheduler:
+    """Bounded, deduplicated retry queue for Redis lease cleanup."""
+
+    def __init__(self, *, max_pending: int) -> None:
+        self._heap: list[
+            tuple[float, int, tuple[str, str, str], Any, CleanupOperation, int]
+        ] = []
+        self._max_pending = max_pending
+        self._pending: set[tuple[str, str, str]] = set()
+        self._condition = Condition(Lock())
+        self._sequence = count()
+        self._reserved = 0
+        self._worker_started = False
+        self._worker_restart_timer: Timer | None = None
+
+    def reserve(self) -> bool:
+        with self._condition:
+            if self._heap and not self._worker_started:
+                self._ensure_worker_locked()
+            if len(self._pending) + self._reserved >= self._max_pending:
+                return False
+            self._reserved += 1
+            return True
+
+    def release_reservation(self) -> None:
+        with self._condition:
+            if self._reserved > 0:
+                self._reserved -= 1
+            self._condition.notify()
+
+    def _ensure_worker_locked(self) -> bool:
+        if self._worker_started:
+            return True
+        self._worker_started = True
+        try:
+            Thread(
+                target=self._run,
+                name="yeyu-quota-cleanup",
+                daemon=True,
+            ).start()
+        except Exception:
+            self._worker_started = False
+            logger.warning("quota lease cleanup worker could not start")
+            self._schedule_worker_restart_locked()
+            return False
+        return True
+
+    def _schedule_worker_restart_locked(self) -> None:
+        if (
+            self._worker_restart_timer is not None
+            and self._worker_restart_timer.is_alive()
+        ):
+            return
+        try:
+            timer = Timer(1.0, self._restart_worker)
+            timer.daemon = True
+            self._worker_restart_timer = timer
+            timer.start()
+        except Exception:
+            self._worker_restart_timer = None
+            logger.warning("quota lease cleanup worker restart could not start")
+
+    def _restart_worker(self) -> None:
+        with self._condition:
+            self._worker_restart_timer = None
+            if self._heap and not self._worker_started:
+                self._ensure_worker_locked()
+            self._condition.notify()
+
+    def submit(
+        self,
+        lease: Any,
+        operation: CleanupOperation,
+        *,
+        reserved: bool = False,
+    ) -> bool:
+        task_id = (lease.key, lease.token, operation)
+        with self._condition:
+            if task_id in self._pending:
+                return True
+            if reserved:
+                if self._reserved <= 0:
+                    return False
+            elif len(self._pending) + self._reserved >= self._max_pending:
+                return False
+            self._pending.add(task_id)
+            if reserved:
+                self._reserved -= 1
+            heappush(
+                self._heap,
+                (monotonic(), next(self._sequence), task_id, lease, operation, 0),
+            )
+            self._ensure_worker_locked()
+            self._condition.notify()
+            return True
+
+    def _run(self) -> None:
+        try:
+            while True:
+                with self._condition:
+                    while True:
+                        if not self._heap:
+                            self._condition.wait()
+                            continue
+                        due, _sequence, task_id, lease, operation, attempt = self._heap[0]
+                        delay = due - monotonic()
+                        if delay > 0:
+                            self._condition.wait(delay)
+                            continue
+                        heappop(self._heap)
+                        break
+                try:
+                    completed = lease._perform_cleanup(operation)
+                except Exception:
+                    completed = False
+                    logger.warning("quota lease cleanup worker failed")
+                with self._condition:
+                    if completed:
+                        self._pending.discard(task_id)
+                    else:
+                        delay = min(
+                            _CLEANUP_RETRY_MIN_SECONDS * (2 ** min(attempt, 6)),
+                            _CLEANUP_RETRY_MAX_SECONDS,
+                        )
+                        heappush(
+                            self._heap,
+                            (
+                                monotonic() + delay,
+                                next(self._sequence),
+                                task_id,
+                                lease,
+                                operation,
+                                attempt + 1,
+                            ),
+                        )
+                    self._condition.notify()
+        except Exception:
+            logger.warning("quota lease cleanup worker stopped unexpectedly")
+            with self._condition:
+                self._worker_started = False
+                if self._heap:
+                    self._ensure_worker_locked()
+
+
+_cleanup_scheduler = _LeaseCleanupScheduler(max_pending=_CLEANUP_QUEUE_SIZE)
+
+
 @dataclass
 class QuotaLease:
     """A releasable Redis concurrency slot with idempotent cleanup."""
@@ -44,17 +205,188 @@ class QuotaLease:
     store: RedisStore
     key: str
     token: str
+    lease_ttl_seconds: int = DEFAULT_CONCURRENCY_LEASE_TTL_SECONDS
     _released: bool = False
+    _state_lock: Lock = field(default_factory=Lock, init=False, repr=False)
+    _renew_stop: Event = field(default_factory=Event, init=False, repr=False)
+    _renew_thread: Thread | None = field(default=None, init=False, repr=False)
+    _release_requested: bool = field(default=False, init=False, repr=False)
+    _release_in_progress: bool = field(default=False, init=False, repr=False)
+    _lease_fenced: bool = field(default=False, init=False, repr=False)
+    cleanup_reserved: bool = False
 
     @property
     def released(self) -> bool:
-        return self._released
+        with self._state_lock:
+            return self._released
+
+    def _start_renewal_locked(self, interval_seconds: float) -> None:
+        if self._released or self._release_requested:
+            return
+        if not callable(getattr(self.store, "renew_lease", None)):
+            return
+        if self._renew_thread is not None and self._renew_thread.is_alive():
+            return
+        self._renew_stop.clear()
+        self._renew_thread = Thread(
+            target=self._renew_loop,
+            args=(interval_seconds,),
+            name="yeyu-quota-lease-renewal",
+            daemon=True,
+        )
+        self._renew_thread.start()
+
+    def start_renewal(self, *, interval_seconds: float | None = None) -> None:
+        if not callable(getattr(self.store, "renew_lease", None)) or not callable(
+            getattr(self.store, "fence_lease", None)
+        ):
+            raise RuntimeError("quota lease requires renewal and fencing support")
+        interval = (
+            max(
+                _MIN_LEASE_RENEW_INTERVAL_SECONDS,
+                self.lease_ttl_seconds / _LEASE_RENEW_INTERVAL_FRACTION,
+            )
+            if interval_seconds is None
+            else interval_seconds
+        )
+        if interval <= 0:
+            raise ValueError("interval_seconds must be positive")
+        with self._state_lock:
+            self._start_renewal_locked(interval)
+
+    def _fence(self) -> bool:
+        with self._state_lock:
+            if self._released or self._release_requested:
+                return False
+            try:
+                fenced = self.store.fence_lease(key=self.key, token=self.token)
+            except Exception:
+                logger.warning("quota lease fencing failed")
+                return False
+            self._lease_fenced = fenced
+            if fenced:
+                self._renew_stop.set()
+        if not fenced:
+            logger.warning("quota lease fencing was rejected")
+        return fenced
+
+    def _renew_loop(self, interval_seconds: float) -> None:
+        while not self._renew_stop.wait(interval_seconds):
+            with self._state_lock:
+                if self._released or self._release_requested:
+                    return
+            try:
+                renewed = self.store.renew_lease(
+                    key=self.key,
+                    token=self.token,
+                    ttl_seconds=self.lease_ttl_seconds,
+                )
+            except Exception:
+                logger.warning("quota lease renewal failed")
+                if self._fence():
+                    return
+                continue
+            if not renewed and self._fence():
+                return
+
+    def _perform_cleanup(self, operation: CleanupOperation) -> bool:
+        try:
+            if operation == "cancel":
+                cancel = getattr(self.store, "cancel_lease", None)
+                if not callable(cancel):
+                    return False
+                completed = bool(cancel(key=self.key, token=self.token))
+                if not completed:
+                    return False
+            else:
+                self.store.release_lease(key=self.key, token=self.token)
+        except Exception:
+            logger.warning("quota lease cleanup attempt failed")
+            return False
+        with self._state_lock:
+            self._release_in_progress = False
+            self._release_requested = False
+            self._released = True
+            self._renew_stop.set()
+        self._release_cleanup_reservation()
+        return True
+
+    def _release_cleanup_reservation(self) -> None:
+        with self._state_lock:
+            if not self.cleanup_reserved:
+                return
+            self.cleanup_reserved = False
+        _cleanup_scheduler.release_reservation()
+
+    def _schedule_cleanup(self, operation: CleanupOperation) -> None:
+        if not callable(getattr(self.store, "renew_lease", None)):
+            logger.warning("quota lease cleanup retry is unavailable")
+            return
+        with self._state_lock:
+            reserved = self.cleanup_reserved
+        if not _cleanup_scheduler.submit(
+            self,
+            operation,
+            reserved=reserved,
+        ):
+            logger.warning("quota lease cleanup queue is full")
+            return
+        if reserved:
+            with self._state_lock:
+                self.cleanup_reserved = False
+
+    def cancel_uncertain(self) -> bool:
+        """Tombstone a lease whose acquire result was not observable."""
+        with self._state_lock:
+            if self._released or self._release_in_progress:
+                return self._released
+            self._release_in_progress = True
+            self._release_requested = True
+            self._renew_stop.set()
+        try:
+            cancel = getattr(self.store, "cancel_lease", None)
+            if not callable(cancel):
+                raise RuntimeError("quota lease cancellation is unavailable")
+            completed = bool(cancel(key=self.key, token=self.token))
+        except Exception:
+            with self._state_lock:
+                self._release_in_progress = False
+            self._schedule_cleanup("cancel")
+            return False
+        if not completed:
+            with self._state_lock:
+                self._release_in_progress = False
+            self._schedule_cleanup("cancel")
+            return False
+        with self._state_lock:
+            self._release_in_progress = False
+            self._release_requested = False
+            self._released = True
+            self._renew_stop.set()
+        self._release_cleanup_reservation()
+        return True
 
     def release(self) -> bool:
-        if self._released:
-            return False
-        released = self.store.release_lease(key=self.key, token=self.token)
-        self._released = True
+        with self._state_lock:
+            if self._released or self._release_in_progress or self._release_requested:
+                return False
+            self._release_in_progress = True
+            self._release_requested = True
+            self._renew_stop.set()
+        try:
+            released = self.store.release_lease(key=self.key, token=self.token)
+        except Exception:
+            with self._state_lock:
+                self._release_in_progress = False
+                self._renew_stop.clear()
+            self._schedule_cleanup("release")
+            raise
+        with self._state_lock:
+            self._release_in_progress = False
+            self._release_requested = False
+            self._released = True
+            self._renew_stop.set()
+        self._release_cleanup_reservation()
         return released
 
     def __enter__(self) -> QuotaLease:
@@ -277,16 +609,33 @@ class QuotaService:
     ) -> QuotaLease:
         token = secrets.token_urlsafe(18)
         key = self._key("concurrency", user_id, api_key_id, api_slug)
-        result = self.redis.acquire_lease(
+        if not _cleanup_scheduler.reserve():
+            raise RedisUnavailable("quota cleanup capacity is unavailable")
+        lease = QuotaLease(
+            store=self.redis,
             key=key,
             token=token,
-            limit=concurrency_limit,
-            ttl_seconds=lease_ttl_seconds,
-            now_seconds=int(_utc(now or datetime.now(UTC)).timestamp()),
+            lease_ttl_seconds=lease_ttl_seconds,
+            cleanup_reserved=True,
         )
+        try:
+            result = self.redis.acquire_lease(
+                key=key,
+                token=token,
+                limit=concurrency_limit,
+                ttl_seconds=lease_ttl_seconds,
+                now_seconds=int(_utc(now or datetime.now(UTC)).timestamp()),
+            )
+        except RedisUnavailable:
+            lease.cancel_uncertain()
+            raise
+        except Exception:
+            lease._release_cleanup_reservation()
+            raise
         if not result.allowed:
+            lease._release_cleanup_reservation()
             raise ConcurrencyLimitExceeded(result.retry_after_seconds or lease_ttl_seconds)
-        return QuotaLease(store=self.redis, key=key, token=token)
+        return lease
 
     def acquire(self, **kwargs: Any) -> QuotaLease:
         return self.acquire_concurrency(**kwargs)

@@ -1,3 +1,4 @@
+import math
 import warnings
 from typing import Self
 
@@ -61,6 +62,9 @@ class Settings(BaseSettings):
     # OAuth/Redis settings are optional for the local template baseline. The
     # OAuth routes fail closed until all GitHub values are provided at runtime.
     REDIS_URL: str = "redis://localhost:6379/0"
+    # Must exceed the complete Redis request ambiguity window; the validator
+    # below enforces a margin over the configured Redis socket timeout.
+    REDIS_LEASE_CANCEL_TOMBSTONE_TTL_SECONDS: int = 900
     GITHUB_CLIENT_ID: str | None = None
     GITHUB_CLIENT_SECRET: str | None = None
     GITHUB_OAUTH_CALLBACK_URL: str | None = None
@@ -156,6 +160,18 @@ class Settings(BaseSettings):
                     "API_KEY_PEPPER must be independent from SECRET_KEY"
                 )
 
+        return self
+
+    @model_validator(mode="after")
+    def _validate_lease_cancel_window(self) -> Self:
+        if self.GITHUB_OAUTH_TIMEOUT_SECONDS <= 0:
+            raise ValueError("GITHUB_OAUTH_TIMEOUT_SECONDS must be positive")
+        minimum_ttl = math.ceil(self.GITHUB_OAUTH_TIMEOUT_SECONDS * 2 + 5)
+        if self.REDIS_LEASE_CANCEL_TOMBSTONE_TTL_SECONDS < minimum_ttl:
+            raise ValueError(
+                "REDIS_LEASE_CANCEL_TOMBSTONE_TTL_SECONDS must exceed the "
+                "Redis timeout ambiguity window"
+            )
         return self
 
 

@@ -2,7 +2,7 @@
 
 ## 0. 状态与边界
 
-- 状态：已通过独立计划复审，待实施。
+- 状态：已通过独立实现复审，待最终验证、提交和推送。
 - 项目根目录：`E:\AI_projects\yeyu-api`。
 - 只修改本计划列出的安全测试、执行器必要修复、候选接口证据文档、发布清单和回滚手册。
 - 不修改 `E:\AI_projects\yeyubakahome_Web`，不访问或修改 `new.api.yeyubaka.top`，不执行 DNS、Nginx、证书、服务器或生产凭据变更。
@@ -12,7 +12,7 @@
 ## 1. 目标与验收边界
 
 1. 为现有 `AllowlistedHttpAdapter`、执行 runner、有限 JSON 边界、请求日志和 `RedactionService` 建立独立安全回归测试；优先复用已有实现，不新增平行 SSRF/代理抽象，也不复制现有单元测试。
-2. 明确验证 provider target、DNS rebinding、私网/环回/云元数据、固定 host/port/path、重定向、请求/响应大小、超时/重试、runner worker slot、Redis/Policy concurrency lease 和错误 envelope 的拒绝行为；超时测试必须区分“HTTP 请求已返回”与“后台 adapter future 已完成”。
+2. 明确验证 provider target、DNS rebinding、私网/环回/云元数据、固定 host/port/path、重定向、请求/响应大小、超时/重试、runner worker slot、Redis/Policy concurrency lease 的 TTL 续租、丢失租约 fencing 和释放重试，以及错误 envelope 的拒绝行为；超时测试必须区分“HTTP 请求已返回”与“后台 adapter future 已完成”。
 3. 明确验证日志、审计和公共错误响应不出现 API Key、Cookie、Authorization、密码、OAuth token、私钥、URL 或异常堆栈。
 4. 为候选接口试验池补一份只含公开来源、官方文档、条款状态、额度与推荐动作的证据表；没有明确再分发许可的候选只能标记 `research_only` 或 `link_only`，不得进入公开 registry。
 5. 编写发布验收清单和回滚手册，逐项区分 `verified`、`blocked`、`not_verified`，不把 `/health`、静态检查或构建结果冒充线上验收。
@@ -43,6 +43,8 @@
 - `E:\AI_projects\yeyu-api\backend\app\services\execution\runner.py`
 - `E:\AI_projects\yeyu-api\backend\app\api\routes\public_api.py`
 - `E:\AI_projects\yeyu-api\backend\app\services\policy.py`
+- `E:\AI_projects\yeyu-api\backend\app\services\quota.py`
+- `E:\AI_projects\yeyu-api\backend\app\services\redis.py`
 - `E:\AI_projects\yeyu-api\backend\app\main.py`
 - `E:\AI_projects\yeyu-api\backend\app\middleware\request_logging.py`
 - `E:\AI_projects\yeyu-api\backend\app\services\audit.py`
@@ -50,6 +52,7 @@
 - `E:\AI_projects\yeyu-api\backend\app\services\execution\models.py`
 - `E:\AI_projects\yeyu-api\backend\app\services\redaction.py`
 - `E:\AI_projects\yeyu-api\backend\app\core\config.py`
+- `E:\AI_projects\yeyu-api\.env.example`
 
 若安全测试不证明实现缺陷，不修改上述生产文件；若发现缺陷，只做对应失败测试证明的最小修复，并更新同一威胁项的回归测试。
 
@@ -63,6 +66,7 @@
 | 有限 JSON、runner worker slot、严格 envelope | `test_execution.py` 的 runner、cache、response 用例 | 真实 ASGI 路由错误响应与 header/body request ID 一致性 |
 | 脱敏 | `test_redaction.py`、`test_audit.py` | middleware caplog、公共错误响应和审计/日志联合检查 |
 | Redis/Policy concurrency lease | `test_policy.py`、`test_public_api.py` | timeout 后后台 future 未完成时，第二个同 key 请求仍不得绕过并发租约；若现状无法保证才修改 policy/public_api/runner |
+| lease TTL、fencing 与清理失败 | `test_policy.py` 的基本 release 断言 | future 生命周期内续租；token 丢失时设置持久 fencing marker 使后续同 key 请求 fail closed；Redis release 失败可重试，避免后台 future 未结束或清理异常造成错误放行/永久占位 |
 | Alembic 链和 downgrade 保护 | `test_migrations.py` | 单 head、revision 链、命令证据和 PostgreSQL 未验证状态记录 |
 
 ## 4. TDD 执行顺序
@@ -75,6 +79,7 @@
 
 - query/parameter JSON 字节上限、嵌套深度、对象/数组项数、非有限数字、危险 target/path 参数；
 - 固定 timeout、最大 retry、最大 redirect、runner worker admission 上限；并单独验证 Redis/Policy concurrency lease：adapter 超时但 future 未完成时，第二个同 Key 请求必须被 `CONCURRENCY_LIMIT` 拒绝，future 完成后才允许下一次；
+- 验证 lease TTL 续租直到 future 完成、token 丢失后的 fencing、正常成功/参数验证失败/submit 失败/runner 关闭的 completion 收敛，以及 Redis release 暂时失败后的安全重试；
 - 通过真实 ASGI route 覆盖非法 slug、重复/超长 query、缺失/非法 API Key、404/405/422、quota/adapter 异常、响应 body 与 `X-Request-ID` 一致性；body/header 均不得出现 URL、堆栈、连接串、Token 或异常文本；
 - `ApiResponse` 模型级一致性只引用已有测试，只有发现真实路由转换缺陷时才修改生产代码。
 
@@ -88,6 +93,9 @@ Step 1 运行 focused tests，必须保留真实 RED 输出；若已有实现直
 
 - 保持现有固定 adapter/provider registry；不让试验池、参数或管理页面产生任意 URL 执行能力。
 - 保持错误信息固定、无连接串/Secret/堆栈；修复时先增加回归测试。
+- Redis/Policy lease 必须在后台 future 生命周期内续租；释放失败必须可观测并可重试，不能把未完成任务交给固定 TTL 后自动遗忘。
+- 续租失败或 token 丢失时必须 fail closed：可用 Redis 时设置与 token 绑定的 fencing marker；future 完成并成功清理后才解除。结果不确定的 acquire 必须使用原子 cancel tombstone 屏障，防止延迟命令复活 token；tombstone 使用有明确保留期的 ZSET，并由配置校验保证超过 Redis 歧义窗口。marker/tombstone 遗留时只能由受控管理操作清理，不自动放行。
+- 清理失败重试必须使用进程级有界、去重、退避调度器；每个生产 lease 获取先预留清理槽，容量耗尽时 fail closed，不得静默丢弃 cleanup intent 或创建无限 per-lease daemon thread。
 - 生产代码修改后运行 `ruff`、focused pytest 和 compileall。
 
 ### Step 3：写候选接口证据表
@@ -112,8 +120,8 @@ Step 1 运行 focused tests，必须保留真实 RED 输出；若已有实现直
 ```powershell
 conda run -n yeyu-api python -m pytest E:\AI_projects\yeyu-api\backend\tests\security -q --confcutdir=E:\AI_projects\yeyu-api\backend\tests\security
 conda run -n yeyu-api python -m pytest E:\AI_projects\yeyu-api\backend\tests\services\test_execution.py -q --confcutdir=E:\AI_projects\yeyu-api\backend\tests\services
-conda run -n yeyu-api python -m pytest E:\AI_projects\yeyu-api\backend\tests\services\test_migrations.py -q
-conda run -n yeyu-api python -m pytest E:\AI_projects\yeyu-api\backend\tests\services\test_redaction.py E:\AI_projects\yeyu-api\backend\tests\services\test_audit.py E:\AI_projects\yeyu-api\backend\tests\services\test_policy.py E:\AI_projects\yeyu-api\backend\tests\api\routes\test_public_api.py -q
+conda run -n yeyu-api python -m pytest E:\AI_projects\yeyu-api\backend\tests\services\test_migrations.py -q --confcutdir=E:\AI_projects\yeyu-api\backend\tests\services
+conda run -n yeyu-api python -m pytest E:\AI_projects\yeyu-api\backend\tests\services\test_redaction.py E:\AI_projects\yeyu-api\backend\tests\services\test_audit.py E:\AI_projects\yeyu-api\backend\tests\services\test_policy.py E:\AI_projects\yeyu-api\backend\tests\api\routes\test_public_api.py -q --confcutdir=E:\AI_projects\yeyu-api\backend\tests\services
 Push-Location -LiteralPath E:\AI_projects\yeyu-api\backend
 conda run -n yeyu-api alembic -c E:\AI_projects\yeyu-api\backend\alembic.ini heads
 Pop-Location

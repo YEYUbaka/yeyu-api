@@ -34,11 +34,22 @@ class AtomicRedis:
         self.counters: dict[str, int] = {}
         self.leases: dict[str, dict[str, int]] = {}
         self.lease_key_expiry: dict[str, int] = {}
+        self.fences: dict[str, set[str]] = {}
+        self.cancellations: dict[str, dict[str, int]] = {}
 
     def eval(self, script: str, numkeys: int, *args: object) -> object:
         keys = [str(value) for value in args[:numkeys]]
         values = [str(value) for value in args[numkeys:]]
-        if "ZREMRANGEBYSCORE" in script:
+        if "SISMEMBER" in script and "ZREMRANGEBYSCORE" not in script:
+            key = keys[0]
+            now, ttl, token = int(values[0]), int(values[1]), values[2]
+            if token not in self.fences.get(keys[1], set()):
+                return 0
+            leases = self.leases.setdefault(key, {})
+            leases[token] = now + ttl
+            self.lease_key_expiry[key] = max(leases.values())
+            return 1
+        if "ZREMRANGEBYSCORE" in script and "latest_cancel" not in script:
             if "ZREVRANGE" not in script or "math.ceil" not in script:
                 raise AssertionError(
                     "lease script must retain the maximum member expiration"
@@ -50,6 +61,15 @@ class AtomicRedis:
                 int(values[2]),
                 values[3],
             )
+            cancellations = self.cancellations.setdefault(keys[2], {})
+            for current_token, expires_at in list(cancellations.items()):
+                if expires_at <= now:
+                    del cancellations[current_token]
+            if token in cancellations:
+                return [-1, 0, ttl]
+            fenced = len(self.fences.get(keys[1], set()))
+            if fenced >= limit:
+                return [0, fenced, ttl]
             if self.lease_key_expiry.get(key, now + 1) <= now:
                 self.leases.pop(key, None)
             leases = self.leases.setdefault(key, {})
@@ -57,16 +77,46 @@ class AtomicRedis:
                 if expires_at <= now:
                     del leases[current_token]
             if len(leases) >= limit:
-                retry = min(leases.values()) - now
-                return [0, len(leases), max(1, retry)]
+                return [0, len(leases), ttl]
             leases[token] = now + ttl
+            self.fences.setdefault(keys[1], set()).add(token)
             self.lease_key_expiry[key] = max(leases.values())
             return [1, len(leases), ttl]
+        if "KEYS[3]" in script and "ZREM" in script:
+            key = keys[0]
+            token = values[0]
+            now, tombstone_ttl = int(values[1]), int(values[2])
+            cancellations = self.cancellations.setdefault(keys[2], {})
+            for current_token, expires_at in list(cancellations.items()):
+                if expires_at <= now:
+                    del cancellations[current_token]
+            cancellations[token] = now + tombstone_ttl
+            leases = self.leases.setdefault(key, {})
+            leases.pop(token, None)
+            markers = self.fences.setdefault(keys[1], set())
+            markers.discard(token)
+            if not markers:
+                self.fences.pop(keys[1], None)
+            if not leases:
+                self.leases.pop(key, None)
+                self.lease_key_expiry.pop(key, None)
+            return 1
         if "ZREM" in script:
             key = keys[0]
             token = values[0]
             leases = self.leases.setdefault(key, {})
-            return int(leases.pop(token, None) is not None)
+            removed = int(leases.pop(token, None) is not None)
+            markers = self.fences.setdefault(keys[1], set())
+            markers.discard(token)
+            if not markers:
+                self.fences.pop(keys[1], None)
+            if not leases:
+                self.leases.pop(key, None)
+                self.lease_key_expiry.pop(key, None)
+            return removed
+        if "SADD" in script:
+            self.fences.setdefault(keys[1], set()).add(values[0])
+            return 1
         if "INCRBY" in script:
             limits = [int(value) for value in values[:-1]]
             counts = [self.counters.get(key, 0) + 1 for key in keys]
