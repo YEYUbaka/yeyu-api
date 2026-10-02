@@ -21,6 +21,10 @@ node_modules/
 dist/
 build/
 .vite/
+deploy/static-catalog/*
+!deploy/static-catalog/
+!deploy/static-catalog/README.md
+deploy/packages/
 
 # Local databases, logs and generated reports
 *.sqlite3

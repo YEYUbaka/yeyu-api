@@ -7,6 +7,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && tsc -p tsconfig.build.json",
+    "build:static-catalog": "vite build --config vite.static.config.ts",
+    "preview:static": "vite preview --config vite.static.config.ts",
+    "validate:static-catalog": "node scripts/validate-static-catalog.mjs",
     "lint": "biome check --write --unsafe --no-errors-on-unmatched --files-ignore-unknown=true ./",
     "preview": "vite preview",
     "generate-client": "openapi-ts",

@@ -74,3 +74,27 @@
 - 下一步修复负责人和重新发布前必须补齐的清单项。
 
 未完成这些证据前，状态只能是 blocked 或 not_verified，不得宣称线上恢复完成。
+
+## 8. 静态资料册发布与回滚设计（未执行）
+
+静态资料册是独立于动态 API 的发布单元，目标目录为：
+
+- 发布根目录：`/opt/yeyu-api-static/`
+- 版本目录：`/opt/yeyu-api-static/releases/<commit-sha>/`
+- 当前版本：`/opt/yeyu-api-static/current`
+- 目标 vhost：只匹配 `api.yeyubaka.top`
+
+静态发布不得使用 `/www/wwwroot/yeyubaka.top`、`new.api.yeyubaka.top`、动态 Compose project、共享日志或动态 API upstream。发布包只来自本地通过校验和 Playwright 验收的 `E:\AI_projects\yeyu-api\deploy\static-catalog\`，不携带任何 Secret。
+
+### 发布前门禁
+
+1. 重新只读检查目标服务器目录、磁盘、Nginx 现状、80/443、DNS 和 TLS；不写文件。
+2. 说明仅新增静态 release 目录和独立 `api.yeyubaka.top` vhost 的影响、验证方式与回滚方式。
+3. 获得用户确认后，才允许上传静态包、切换 `current`、写入 Nginx 或申请证书。
+4. `nginx -t`、HTTPS 首页、`/health`、移动端静态资源、搜索/筛选和旧站只读 smoke 全部完成并留证。
+
+### 静态回滚
+
+如果静态页面、TLS、Nginx 路由或旧服务 smoke 失败，只切回上一个已验收的 `current` 指针，并保留失败版本用于审查。若 vhost 已获批启用，回滚只撤回或恢复 `api.yeyubaka.top` 这一独立配置；不得删除共享目录、重启旧服务、修改旧站配置或执行 Docker 卷清理。
+
+本节只是发布设计，当前没有执行服务器、DNS、Nginx、证书或远程上传操作。

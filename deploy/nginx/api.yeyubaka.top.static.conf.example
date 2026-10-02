@@ -1,0 +1,40 @@
+# Yeyu API 静态资料册示例。
+# 这是未执行的配置样例；上线前必须重新做服务器只读 preflight，并获得用户确认。
+# 不包含 upstream、Docker、动态 API、旧站点或 new.api.yeyubaka.top 路由。
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name api.yeyubaka.top;
+
+    root /opt/yeyu-api-static/current;
+    index index.html;
+
+    access_log /var/log/nginx/api.yeyubaka.top.access.log;
+    error_log /var/log/nginx/api.yeyubaka.top.error.log warn;
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'" always;
+
+    location = /health {
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location ~* \.(?:css|js|png|jpg|jpeg|gif|svg|ico|webp|woff2?)$ {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=604800, immutable" always;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+}
+
+# HTTPS/证书配置不在此样例中。证书申请和 443 vhost 必须作为独立的获批变更处理。
