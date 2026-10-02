@@ -5,6 +5,39 @@ export type ClientOptions = {
 };
 
 /**
+ * AdminCatalogPage
+ */
+export type AdminCatalogPage = {
+    /**
+     * Data
+     */
+    data: Array<ApiDefinitionAdmin>;
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Page Size
+     */
+    page_size: number;
+};
+
+/**
+ * AdminHealthView
+ */
+export type AdminHealthView = {
+    /**
+     * Status
+     */
+    status: 'ready' | 'not_ready';
+    checks: HealthChecks;
+};
+
+/**
  * ApiAuth
  */
 export type ApiAuth = {
@@ -447,6 +480,100 @@ export type ApiKeysPublic = {
 };
 
 /**
+ * ApiResponse
+ *
+ * Strict public execution envelope with dictionary compatibility helpers.
+ */
+export type ApiResponse = {
+    /**
+     * Success
+     */
+    success: boolean;
+    /**
+     * Data
+     */
+    data: unknown | null;
+    /**
+     * Error
+     */
+    error: {
+        [key: string]: unknown;
+    } | null;
+    /**
+     * Meta
+     */
+    meta: {
+        [key: string]: unknown;
+    };
+};
+
+/**
+ * AuditEventPage
+ */
+export type AuditEventPage = {
+    /**
+     * Data
+     */
+    data: Array<AuditEventPublic>;
+    /**
+     * Count
+     */
+    count: number;
+    /**
+     * Page
+     */
+    page: number;
+    /**
+     * Page Size
+     */
+    page_size: number;
+};
+
+/**
+ * AuditEventPublic
+ */
+export type AuditEventPublic = {
+    /**
+     * Id
+     */
+    id: string;
+    /**
+     * Actor Id
+     */
+    actor_id?: string | null;
+    /**
+     * Request Id
+     */
+    request_id?: string | null;
+    /**
+     * Action
+     */
+    action: string;
+    /**
+     * Object Type
+     */
+    object_type: string;
+    /**
+     * Object Id
+     */
+    object_id: string;
+    /**
+     * Outcome
+     */
+    outcome: string;
+    /**
+     * Details
+     */
+    details: {
+        [key: string]: unknown;
+    };
+    /**
+     * Created At
+     */
+    created_at: string;
+};
+
+/**
  * Body_login-login_access_token
  */
 export type Body_login_login_access_token = {
@@ -603,6 +730,24 @@ export type HTTPValidationError = {
      * Detail
      */
     detail?: Array<ValidationError>;
+};
+
+/**
+ * HealthChecks
+ */
+export type HealthChecks = {
+    /**
+     * Database
+     */
+    database: 'ok' | 'failed';
+    /**
+     * Redis
+     */
+    redis: 'ok' | 'failed';
+    /**
+     * Migrations
+     */
+    migrations: 'ok' | 'failed';
 };
 
 /**
@@ -989,6 +1134,40 @@ export type ValidationError = {
     ctx?: {
         [key: string]: unknown;
     };
+};
+
+export type healthHealthData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/health';
+};
+
+export type healthHealthResponses = {
+    /**
+     * Response Health-Health
+     *
+     * Successful Response
+     */
+    200: {
+        [key: string]: string;
+    };
+};
+
+export type healthHealthResponse = healthHealthResponses[keyof healthHealthResponses];
+
+export type healthReadyData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/ready';
+};
+
+export type healthReadyResponses = {
+    /**
+     * Successful Response
+     */
+    200: unknown;
 };
 
 export type loginLoginAccessTokenData = {
@@ -1788,6 +1967,64 @@ export type catalogGetCatalogDetailResponses = {
 
 export type catalogGetCatalogDetailResponse = catalogGetCatalogDetailResponses[keyof catalogGetCatalogDetailResponses];
 
+export type publicApiExecuteToolData = {
+    body?: never;
+    path: {
+        /**
+         * Slug
+         */
+        slug: string;
+    };
+    query?: never;
+    url: '/api/v1/tools/{slug}';
+};
+
+export type publicApiExecuteToolErrors = {
+    /**
+     * API key required
+     */
+    401: ApiErrorResponse;
+    /**
+     * API policy denied
+     */
+    403: ApiErrorResponse;
+    /**
+     * API not found
+     */
+    404: ApiErrorResponse;
+    /**
+     * Invalid parameters
+     */
+    422: ApiErrorResponse;
+    /**
+     * Rate limit exceeded
+     */
+    429: ApiErrorResponse;
+    /**
+     * Upstream execution failed
+     */
+    502: ApiErrorResponse;
+    /**
+     * Quota unavailable
+     */
+    503: ApiErrorResponse;
+    /**
+     * Execution timed out
+     */
+    504: ApiErrorResponse;
+};
+
+export type publicApiExecuteToolError = publicApiExecuteToolErrors[keyof publicApiExecuteToolErrors];
+
+export type publicApiExecuteToolResponses = {
+    /**
+     * Successful Response
+     */
+    200: ApiResponse;
+};
+
+export type publicApiExecuteToolResponse = publicApiExecuteToolResponses[keyof publicApiExecuteToolResponses];
+
 export type adminCatalogDeleteCatalogDefinitionData = {
     body?: never;
     path: {
@@ -1877,6 +2114,102 @@ export type adminCatalogCreateCatalogDefinitionResponses = {
 };
 
 export type adminCatalogCreateCatalogDefinitionResponse = adminCatalogCreateCatalogDefinitionResponses[keyof adminCatalogCreateCatalogDefinitionResponses];
+
+export type adminCatalogReadAdminCatalogData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Status
+         */
+        status?: string | null;
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+    };
+    url: '/api/v1/admin/catalog';
+};
+
+export type adminCatalogReadAdminCatalogErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type adminCatalogReadAdminCatalogError = adminCatalogReadAdminCatalogErrors[keyof adminCatalogReadAdminCatalogErrors];
+
+export type adminCatalogReadAdminCatalogResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminCatalogPage;
+};
+
+export type adminCatalogReadAdminCatalogResponse = adminCatalogReadAdminCatalogResponses[keyof adminCatalogReadAdminCatalogResponses];
+
+export type adminAuditReadAuditEventsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Page
+         */
+        page?: number;
+        /**
+         * Page Size
+         */
+        page_size?: number;
+        /**
+         * Action
+         */
+        action?: string | null;
+        /**
+         * Outcome
+         */
+        outcome?: string | null;
+    };
+    url: '/api/v1/admin/audit';
+};
+
+export type adminAuditReadAuditEventsErrors = {
+    /**
+     * Validation Error
+     */
+    422: HTTPValidationError;
+};
+
+export type adminAuditReadAuditEventsError = adminAuditReadAuditEventsErrors[keyof adminAuditReadAuditEventsErrors];
+
+export type adminAuditReadAuditEventsResponses = {
+    /**
+     * Successful Response
+     */
+    200: AuditEventPage;
+};
+
+export type adminAuditReadAuditEventsResponse = adminAuditReadAuditEventsResponses[keyof adminAuditReadAuditEventsResponses];
+
+export type adminHealthReadAdminHealthData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/admin/health';
+};
+
+export type adminHealthReadAdminHealthResponses = {
+    /**
+     * Successful Response
+     */
+    200: AdminHealthView;
+};
+
+export type adminHealthReadAdminHealthResponse = adminHealthReadAdminHealthResponses[keyof adminHealthReadAdminHealthResponses];
 
 export type apiKeysListApiKeysData = {
     body?: never;

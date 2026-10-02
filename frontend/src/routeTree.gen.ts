@@ -16,6 +16,11 @@ import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as ResetPasswordRouteImport } from './routes/reset-password'
 import { Route as SignupRouteImport } from './routes/signup'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
+import { Route as LayoutAdminApisRouteImport } from './routes/_layout/admin-apis'
+import { Route as LayoutAdminAuditRouteImport } from './routes/_layout/admin-audit'
+import { Route as LayoutAdminHealthRouteImport } from './routes/_layout/admin-health'
+import { Route as LayoutAdminPoliciesRouteImport } from './routes/_layout/admin-policies'
+import { Route as LayoutAdminTrialPoolRouteImport } from './routes/_layout/admin-trial-pool'
 import { Route as LayoutDashboardRouteImport } from './routes/_layout/dashboard'
 import { Route as LayoutItemsRouteImport } from './routes/_layout/items'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
@@ -56,6 +61,31 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutAdminApisRoute = LayoutAdminApisRouteImport.update({
+  id: '/admin-apis',
+  path: '/admin-apis',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutAdminAuditRoute = LayoutAdminAuditRouteImport.update({
+  id: '/admin-audit',
+  path: '/admin-audit',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutAdminHealthRoute = LayoutAdminHealthRouteImport.update({
+  id: '/admin-health',
+  path: '/admin-health',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutAdminPoliciesRoute = LayoutAdminPoliciesRouteImport.update({
+  id: '/admin-policies',
+  path: '/admin-policies',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutAdminTrialPoolRoute = LayoutAdminTrialPoolRouteImport.update({
+  id: '/admin-trial-pool',
+  path: '/admin-trial-pool',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutDashboardRoute = LayoutDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -89,6 +119,11 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRoute
+  '/admin-apis': typeof LayoutAdminApisRoute
+  '/admin-audit': typeof LayoutAdminAuditRoute
+  '/admin-health': typeof LayoutAdminHealthRoute
+  '/admin-policies': typeof LayoutAdminPoliciesRoute
+  '/admin-trial-pool': typeof LayoutAdminTrialPoolRoute
   '/dashboard': typeof LayoutDashboardRoute
   '/items': typeof LayoutItemsRoute
   '/settings': typeof LayoutSettingsRoute
@@ -102,6 +137,11 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRoute
+  '/admin-apis': typeof LayoutAdminApisRoute
+  '/admin-audit': typeof LayoutAdminAuditRoute
+  '/admin-health': typeof LayoutAdminHealthRoute
+  '/admin-policies': typeof LayoutAdminPoliciesRoute
+  '/admin-trial-pool': typeof LayoutAdminTrialPoolRoute
   '/dashboard': typeof LayoutDashboardRoute
   '/items': typeof LayoutItemsRoute
   '/settings': typeof LayoutSettingsRoute
@@ -117,6 +157,11 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/_layout/admin': typeof LayoutAdminRoute
+  '/_layout/admin-apis': typeof LayoutAdminApisRoute
+  '/_layout/admin-audit': typeof LayoutAdminAuditRoute
+  '/_layout/admin-health': typeof LayoutAdminHealthRoute
+  '/_layout/admin-policies': typeof LayoutAdminPoliciesRoute
+  '/_layout/admin-trial-pool': typeof LayoutAdminTrialPoolRoute
   '/_layout/dashboard': typeof LayoutDashboardRoute
   '/_layout/items': typeof LayoutItemsRoute
   '/_layout/settings': typeof LayoutSettingsRoute
@@ -132,6 +177,11 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/admin'
+    | '/admin-apis'
+    | '/admin-audit'
+    | '/admin-health'
+    | '/admin-policies'
+    | '/admin-trial-pool'
     | '/dashboard'
     | '/items'
     | '/settings'
@@ -145,6 +195,11 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/admin'
+    | '/admin-apis'
+    | '/admin-audit'
+    | '/admin-health'
+    | '/admin-policies'
+    | '/admin-trial-pool'
     | '/dashboard'
     | '/items'
     | '/settings'
@@ -159,6 +214,11 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/_layout/admin'
+    | '/_layout/admin-apis'
+    | '/_layout/admin-audit'
+    | '/_layout/admin-health'
+    | '/_layout/admin-policies'
+    | '/_layout/admin-trial-pool'
     | '/_layout/dashboard'
     | '/_layout/items'
     | '/_layout/settings'
@@ -228,6 +288,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/admin-apis': {
+      id: '/_layout/admin-apis'
+      path: '/admin-apis'
+      fullPath: '/admin-apis'
+      preLoaderRoute: typeof LayoutAdminApisRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/admin-audit': {
+      id: '/_layout/admin-audit'
+      path: '/admin-audit'
+      fullPath: '/admin-audit'
+      preLoaderRoute: typeof LayoutAdminAuditRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/admin-health': {
+      id: '/_layout/admin-health'
+      path: '/admin-health'
+      fullPath: '/admin-health'
+      preLoaderRoute: typeof LayoutAdminHealthRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/admin-policies': {
+      id: '/_layout/admin-policies'
+      path: '/admin-policies'
+      fullPath: '/admin-policies'
+      preLoaderRoute: typeof LayoutAdminPoliciesRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/admin-trial-pool': {
+      id: '/_layout/admin-trial-pool'
+      path: '/admin-trial-pool'
+      fullPath: '/admin-trial-pool'
+      preLoaderRoute: typeof LayoutAdminTrialPoolRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/dashboard': {
       id: '/_layout/dashboard'
       path: '/dashboard'
@@ -268,6 +363,11 @@ declare module '@tanstack/react-router' {
 
 interface LayoutRouteChildren {
   LayoutAdminRoute: typeof LayoutAdminRoute
+  LayoutAdminApisRoute: typeof LayoutAdminApisRoute
+  LayoutAdminAuditRoute: typeof LayoutAdminAuditRoute
+  LayoutAdminHealthRoute: typeof LayoutAdminHealthRoute
+  LayoutAdminPoliciesRoute: typeof LayoutAdminPoliciesRoute
+  LayoutAdminTrialPoolRoute: typeof LayoutAdminTrialPoolRoute
   LayoutDashboardRoute: typeof LayoutDashboardRoute
   LayoutItemsRoute: typeof LayoutItemsRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
@@ -275,6 +375,11 @@ interface LayoutRouteChildren {
 
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAdminRoute: LayoutAdminRoute,
+  LayoutAdminApisRoute: LayoutAdminApisRoute,
+  LayoutAdminAuditRoute: LayoutAdminAuditRoute,
+  LayoutAdminHealthRoute: LayoutAdminHealthRoute,
+  LayoutAdminPoliciesRoute: LayoutAdminPoliciesRoute,
+  LayoutAdminTrialPoolRoute: LayoutAdminTrialPoolRoute,
   LayoutDashboardRoute: LayoutDashboardRoute,
   LayoutItemsRoute: LayoutItemsRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,

@@ -2,7 +2,7 @@
 
 import { type Client, type Options as Options2, type TDataShape, urlSearchParamsBodySerializer } from './client';
 import { client } from './client.gen';
-import type { adminCatalogCreateCatalogDefinitionData, adminCatalogCreateCatalogDefinitionErrors, adminCatalogCreateCatalogDefinitionResponses, adminCatalogDeleteCatalogDefinitionData, adminCatalogDeleteCatalogDefinitionErrors, adminCatalogDeleteCatalogDefinitionResponses, adminCatalogUpdateCatalogDefinitionData, adminCatalogUpdateCatalogDefinitionErrors, adminCatalogUpdateCatalogDefinitionResponses, adminPoliciesGetPolicyData, adminPoliciesGetPolicyErrors, adminPoliciesGetPolicyResponses, adminPoliciesUpdatePolicyData, adminPoliciesUpdatePolicyErrors, adminPoliciesUpdatePolicyResponses, apiKeysCreateApiKeyData, apiKeysCreateApiKeyErrors, apiKeysCreateApiKeyResponses, apiKeysListApiKeysData, apiKeysListApiKeysResponses, apiKeysPublicAuthCheckData, apiKeysPublicAuthCheckErrors, apiKeysPublicAuthCheckResponses, apiKeysRevokeApiKeyData, apiKeysRevokeApiKeyErrors, apiKeysRevokeApiKeyResponses, apiKeysRotateApiKeyData, apiKeysRotateApiKeyErrors, apiKeysRotateApiKeyResponses, catalogGetCatalogDetailData, catalogGetCatalogDetailErrors, catalogGetCatalogDetailResponses, catalogSearchCatalogData, catalogSearchCatalogErrors, catalogSearchCatalogResponses, itemsCreateItemData, itemsCreateItemErrors, itemsCreateItemResponses, itemsDeleteItemData, itemsDeleteItemErrors, itemsDeleteItemResponses, itemsReadItemData, itemsReadItemErrors, itemsReadItemResponses, itemsReadItemsData, itemsReadItemsErrors, itemsReadItemsResponses, itemsUpdateItemData, itemsUpdateItemErrors, itemsUpdateItemResponses, loginGithubCallbackData, loginGithubLoginData, loginLoginAccessTokenData, loginLoginAccessTokenErrors, loginLoginAccessTokenResponses, loginLogoutData, loginLogoutResponses, loginRecoverPasswordData, loginRecoverPasswordErrors, loginRecoverPasswordHtmlContentData, loginRecoverPasswordHtmlContentErrors, loginRecoverPasswordHtmlContentResponses, loginRecoverPasswordResponses, loginRequestEmailVerificationData, loginRequestEmailVerificationErrors, loginRequestEmailVerificationResponses, loginRequestPasswordResetData, loginRequestPasswordResetErrors, loginRequestPasswordResetResponses, loginResetPasswordData, loginResetPasswordErrors, loginResetPasswordResponses, loginTestTokenData, loginTestTokenResponses, loginVerifyEmailData, loginVerifyEmailErrors, loginVerifyEmailResponses, privateCreateUserData, privateCreateUserErrors, privateCreateUserResponses, usersCreateUserData, usersCreateUserErrors, usersCreateUserResponses, usersDeleteUserData, usersDeleteUserErrors, usersDeleteUserMeData, usersDeleteUserMeResponses, usersDeleteUserResponses, usersReadUserByIdData, usersReadUserByIdErrors, usersReadUserByIdResponses, usersReadUserMeData, usersReadUserMeResponses, usersReadUsersData, usersReadUsersErrors, usersReadUsersResponses, usersRegisterUserData, usersRegisterUserErrors, usersRegisterUserResponses, usersRequestMyEmailVerificationData, usersRequestMyEmailVerificationResponses, usersStartGithubLinkData, usersStartGithubLinkErrors, usersUpdatePasswordMeData, usersUpdatePasswordMeErrors, usersUpdatePasswordMeResponses, usersUpdateUserData, usersUpdateUserErrors, usersUpdateUserMeData, usersUpdateUserMeErrors, usersUpdateUserMeResponses, usersUpdateUserResponses, utilsHealthCheckData, utilsHealthCheckResponses, utilsTestEmailData, utilsTestEmailErrors, utilsTestEmailResponses } from './types.gen';
+import type { adminAuditReadAuditEventsData, adminAuditReadAuditEventsErrors, adminAuditReadAuditEventsResponses, adminCatalogCreateCatalogDefinitionData, adminCatalogCreateCatalogDefinitionErrors, adminCatalogCreateCatalogDefinitionResponses, adminCatalogDeleteCatalogDefinitionData, adminCatalogDeleteCatalogDefinitionErrors, adminCatalogDeleteCatalogDefinitionResponses, adminCatalogReadAdminCatalogData, adminCatalogReadAdminCatalogErrors, adminCatalogReadAdminCatalogResponses, adminCatalogUpdateCatalogDefinitionData, adminCatalogUpdateCatalogDefinitionErrors, adminCatalogUpdateCatalogDefinitionResponses, adminHealthReadAdminHealthData, adminHealthReadAdminHealthResponses, adminPoliciesGetPolicyData, adminPoliciesGetPolicyErrors, adminPoliciesGetPolicyResponses, adminPoliciesUpdatePolicyData, adminPoliciesUpdatePolicyErrors, adminPoliciesUpdatePolicyResponses, apiKeysCreateApiKeyData, apiKeysCreateApiKeyErrors, apiKeysCreateApiKeyResponses, apiKeysListApiKeysData, apiKeysListApiKeysResponses, apiKeysPublicAuthCheckData, apiKeysPublicAuthCheckErrors, apiKeysPublicAuthCheckResponses, apiKeysRevokeApiKeyData, apiKeysRevokeApiKeyErrors, apiKeysRevokeApiKeyResponses, apiKeysRotateApiKeyData, apiKeysRotateApiKeyErrors, apiKeysRotateApiKeyResponses, catalogGetCatalogDetailData, catalogGetCatalogDetailErrors, catalogGetCatalogDetailResponses, catalogSearchCatalogData, catalogSearchCatalogErrors, catalogSearchCatalogResponses, healthHealthData, healthHealthResponses, healthReadyData, healthReadyResponses, itemsCreateItemData, itemsCreateItemErrors, itemsCreateItemResponses, itemsDeleteItemData, itemsDeleteItemErrors, itemsDeleteItemResponses, itemsReadItemData, itemsReadItemErrors, itemsReadItemResponses, itemsReadItemsData, itemsReadItemsErrors, itemsReadItemsResponses, itemsUpdateItemData, itemsUpdateItemErrors, itemsUpdateItemResponses, loginGithubCallbackData, loginGithubLoginData, loginLoginAccessTokenData, loginLoginAccessTokenErrors, loginLoginAccessTokenResponses, loginLogoutData, loginLogoutResponses, loginRecoverPasswordData, loginRecoverPasswordErrors, loginRecoverPasswordHtmlContentData, loginRecoverPasswordHtmlContentErrors, loginRecoverPasswordHtmlContentResponses, loginRecoverPasswordResponses, loginRequestEmailVerificationData, loginRequestEmailVerificationErrors, loginRequestEmailVerificationResponses, loginRequestPasswordResetData, loginRequestPasswordResetErrors, loginRequestPasswordResetResponses, loginResetPasswordData, loginResetPasswordErrors, loginResetPasswordResponses, loginTestTokenData, loginTestTokenResponses, loginVerifyEmailData, loginVerifyEmailErrors, loginVerifyEmailResponses, privateCreateUserData, privateCreateUserErrors, privateCreateUserResponses, publicApiExecuteToolData, publicApiExecuteToolErrors, publicApiExecuteToolResponses, usersCreateUserData, usersCreateUserErrors, usersCreateUserResponses, usersDeleteUserData, usersDeleteUserErrors, usersDeleteUserMeData, usersDeleteUserMeResponses, usersDeleteUserResponses, usersReadUserByIdData, usersReadUserByIdErrors, usersReadUserByIdResponses, usersReadUserMeData, usersReadUserMeResponses, usersReadUsersData, usersReadUsersErrors, usersReadUsersResponses, usersRegisterUserData, usersRegisterUserErrors, usersRegisterUserResponses, usersRequestMyEmailVerificationData, usersRequestMyEmailVerificationResponses, usersStartGithubLinkData, usersStartGithubLinkErrors, usersUpdatePasswordMeData, usersUpdatePasswordMeErrors, usersUpdatePasswordMeResponses, usersUpdateUserData, usersUpdateUserErrors, usersUpdateUserMeData, usersUpdateUserMeErrors, usersUpdateUserMeResponses, usersUpdateUserResponses, utilsHealthCheckData, utilsHealthCheckResponses, utilsTestEmailData, utilsTestEmailErrors, utilsTestEmailResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -17,6 +17,30 @@ export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends 
      */
     meta?: Record<string, unknown>;
 };
+
+export class HealthService {
+    /**
+     * Health
+     */
+    public static health<ThrowOnError extends boolean = true>(options?: Options<healthHealthData, ThrowOnError>) {
+        return (options?.client ?? client).get<healthHealthResponses, unknown, ThrowOnError>({
+            responseType: 'json',
+            url: '/health',
+            ...options
+        });
+    }
+
+    /**
+     * Ready
+     */
+    public static ready<ThrowOnError extends boolean = true>(options?: Options<healthReadyData, ThrowOnError>) {
+        return (options?.client ?? client).get<healthReadyResponses, unknown, ThrowOnError>({
+            responseType: 'json',
+            url: '/ready',
+            ...options
+        });
+    }
+}
 
 export class LoginService {
     /**
@@ -483,6 +507,20 @@ export class CatalogService {
     }
 }
 
+export class PublicApiService {
+    /**
+     * Execute Tool
+     */
+    public static apiExecuteTool<ThrowOnError extends boolean = true>(options: Options<publicApiExecuteToolData, ThrowOnError>) {
+        return (options.client ?? client).get<publicApiExecuteToolResponses, publicApiExecuteToolErrors, ThrowOnError>({
+            responseType: 'json',
+            security: [{ name: 'X-API-Key', type: 'apiKey' }],
+            url: '/api/v1/tools/{slug}',
+            ...options
+        });
+    }
+}
+
 export class AdminCatalogService {
     /**
      * Delete Catalog Definition
@@ -524,6 +562,46 @@ export class AdminCatalogService {
                 'Content-Type': 'application/json',
                 ...options.headers
             }
+        });
+    }
+
+    /**
+     * Read Admin Catalog
+     */
+    public static catalogReadAdminCatalog<ThrowOnError extends boolean = true>(options?: Options<adminCatalogReadAdminCatalogData, ThrowOnError>) {
+        return (options?.client ?? client).get<adminCatalogReadAdminCatalogResponses, adminCatalogReadAdminCatalogErrors, ThrowOnError>({
+            responseType: 'json',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/catalog',
+            ...options
+        });
+    }
+}
+
+export class AdminAuditService {
+    /**
+     * Read Audit Events
+     */
+    public static auditReadAuditEvents<ThrowOnError extends boolean = true>(options?: Options<adminAuditReadAuditEventsData, ThrowOnError>) {
+        return (options?.client ?? client).get<adminAuditReadAuditEventsResponses, adminAuditReadAuditEventsErrors, ThrowOnError>({
+            responseType: 'json',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/audit',
+            ...options
+        });
+    }
+}
+
+export class AdminHealthService {
+    /**
+     * Read Admin Health
+     */
+    public static healthReadAdminHealth<ThrowOnError extends boolean = true>(options?: Options<adminHealthReadAdminHealthData, ThrowOnError>) {
+        return (options?.client ?? client).get<adminHealthReadAdminHealthResponses, unknown, ThrowOnError>({
+            responseType: 'json',
+            security: [{ scheme: 'bearer', type: 'http' }],
+            url: '/api/v1/admin/health',
+            ...options
         });
     }
 }
