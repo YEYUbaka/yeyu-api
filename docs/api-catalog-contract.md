@@ -1,5 +1,7 @@
 # API 目录契约
 
+> 历史动态平台契约：当前首期只交付静态 API 收集目录。本文中的 `/api/v1/catalog`、管理员接口和实际执行接口不属于当前交付范围；当前范围以 `E:\AI_projects\yeyu-api\docs\2026-10-02-static-api-directory-scope.md` 为准。
+
 ## 目标
 
 目录只保存经过人工维护的 API 元数据，不保存任意用户提交的上游 URL，也不执行代理转发。`adapter_name` 指向后续代码中的固定适配器；`provider_ref` 只能是内部引用，公开响应不会返回它。

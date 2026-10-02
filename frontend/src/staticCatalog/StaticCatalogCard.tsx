@@ -8,15 +8,14 @@ const redistributionLabels: Record<
   StaticCatalogEntry["redistributionMode"],
   string
 > = {
-  "self-operated": "Yeyu 自营候选",
-  "reference-only": "仅资料汇总",
-  "link-only": "仅官方链接",
+  "reference-only": "资料汇总",
+  "link-only": "官方链接",
 }
 
 const authLabels: Record<StaticCatalogEntry["authRequired"], string> = {
   none: "无需账号",
   optional: "可能需要 Key",
-  required: "需要 Yeyu Key",
+  required: "需要 Key",
   unknown: "鉴权待核验",
 }
 
@@ -30,7 +29,6 @@ const displayStatusLabels: Record<StaticCatalogEntry["displayStatus"], string> =
   {
     candidate: "待核验",
     "verified-reference": "来源已核验",
-    "self-operated-ready": "自营候选",
   }
 
 export function StaticCatalogCard({ entry }: StaticCatalogCardProps) {
@@ -88,7 +86,7 @@ export function StaticCatalogCard({ entry }: StaticCatalogCardProps) {
             rel="noopener noreferrer"
             target="_blank"
           >
-            阅读 {entry.providerName} 官方文档 <span aria-hidden="true">↗</span>
+            打开 {entry.providerName} 官方文档 <span aria-hidden="true">↗</span>
           </a>
           <a href={entry.sourceUrl} rel="noopener noreferrer" target="_blank">
             查看来源 <span aria-hidden="true">↗</span>

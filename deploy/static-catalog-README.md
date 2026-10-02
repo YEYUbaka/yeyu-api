@@ -1,4 +1,4 @@
-# 静态 API 资料册发布说明
+# 静态 API 收集目录发布说明
 
 这份发布单元只包含编译后的静态 HTML、JavaScript、CSS 和资源文件。它用于整理公开免费 API 资料，不提供 API 代理、账号、API Key、登录、OAuth、SMTP、数据库或缓存服务。
 

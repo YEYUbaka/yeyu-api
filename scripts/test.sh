@@ -1,12 +1,11 @@
 #! /usr/bin/env sh
 
-# Exit in case of error
-set -e
-set -x
+# The current product is a static API catalog. Dynamic platform checks remain
+# in scripts/test-legacy.sh and are manual historical checks only.
+set -eu
 
-docker compose build
-docker compose down -v --remove-orphans # Remove possibly previous broken stacks left hanging after an error
-docker compose run --rm backend bash scripts/prestart.sh
-docker compose up -d
-docker compose exec -T backend bash scripts/tests-start.sh "$@"
-docker compose down -v --remove-orphans
+cd "$(dirname "$0")/../frontend"
+pnpm run validate:static-catalog
+pnpm exec tsc -p tsconfig.build.json --noEmit
+pnpm test
+pnpm run build:static-catalog

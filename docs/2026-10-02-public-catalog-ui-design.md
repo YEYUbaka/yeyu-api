@@ -1,5 +1,7 @@
 # 公开目录与 A+B 首页设计说明
 
+> 历史设计记录：本文原本按“动态公益 API 平台 + 公开目录”编写。当前有效范围已收缩为静态 API 收集目录，请以 `E:\AI_projects\yeyu-api\docs\2026-10-02-static-api-directory-scope.md` 为准；本文不再作为实施依据。
+
 状态：方向已由用户确认为方案 B；本文写入后等待用户审阅，审阅通过后再生成实施计划。
 
 项目根目录：`E:\AI_projects\yeyu-api`

@@ -5,17 +5,9 @@ const dataPath = fileURLToPath(
   new URL("../src/staticCatalog/data.json", import.meta.url),
 )
 
-const allowedRedistributionModes = new Set([
-  "self-operated",
-  "reference-only",
-  "link-only",
-])
-const allowedOwnershipValues = new Set(["yeyu", "third-party"])
-const allowedDisplayStatuses = new Set([
-  "candidate",
-  "verified-reference",
-  "self-operated-ready",
-])
+const allowedRedistributionModes = new Set(["reference-only", "link-only"])
+const allowedOwnershipValues = new Set(["third-party"])
+const allowedDisplayStatuses = new Set(["candidate", "verified-reference"])
 const allowedAuthRequirements = new Set([
   "none",
   "optional",
@@ -141,26 +133,6 @@ for (const [index, entry] of (Array.isArray(entries)
   }
   if (!allowedDisplayStatuses.has(entry.displayStatus)) {
     fail(`${path}.displayStatus is unsupported`)
-  }
-  if (entry.ownership === "yeyu") {
-    if (entry.redistributionMode !== "self-operated") {
-      fail(`${path} Yeyu entries must use self-operated redistributionMode`)
-    }
-    if (entry.displayStatus !== "self-operated-ready") {
-      fail(`${path} Yeyu entries must use self-operated-ready displayStatus`)
-    }
-  }
-  if (entry.ownership === "third-party") {
-    if (entry.redistributionMode === "self-operated") {
-      fail(
-        `${path} third-party entries cannot use self-operated redistributionMode`,
-      )
-    }
-    if (entry.displayStatus === "self-operated-ready") {
-      fail(
-        `${path} third-party entries cannot use self-operated-ready displayStatus`,
-      )
-    }
   }
   if (!allowedAuthRequirements.has(entry.authRequired)) {
     fail(`${path}.authRequired is unsupported`)

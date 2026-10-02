@@ -1,14 +1,8 @@
-export type StaticCatalogRedistributionMode =
-  | "self-operated"
-  | "reference-only"
-  | "link-only"
+export type StaticCatalogRedistributionMode = "reference-only" | "link-only"
 
-export type StaticCatalogOwnership = "yeyu" | "third-party"
+export type StaticCatalogOwnership = "third-party"
 
-export type StaticCatalogDisplayStatus =
-  | "candidate"
-  | "verified-reference"
-  | "self-operated-ready"
+export type StaticCatalogDisplayStatus = "candidate" | "verified-reference"
 
 export type StaticCatalogAuthRequirement =
   | "none"

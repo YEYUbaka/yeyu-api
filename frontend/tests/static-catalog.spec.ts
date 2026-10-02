@@ -23,11 +23,11 @@ test.describe("static API catalog", () => {
     await page.goto("/")
 
     await expect(
-      page.getByRole("heading", { name: "免费 API 资料册" }),
+      page.getByRole("heading", { name: "免费 API 收集目录" }),
     ).toBeVisible()
     await expect(page.getByTestId("static-catalog-entry")).toHaveCount(6)
     await expect(page.getByText("Open-Meteo 天气与空气质量")).toBeVisible()
-    await expect(page.getByText("仅资料汇总").first()).toBeVisible()
+    await expect(page.getByText("资料汇总").first()).toBeVisible()
 
     await page.waitForTimeout(250)
     expectSameOriginRequests(requests, baseURL)
@@ -36,9 +36,7 @@ test.describe("static API catalog", () => {
   test("searches entries locally", async ({ page }) => {
     await page.goto("/")
 
-    await page
-      .getByRole("searchbox", { name: "搜索免费 API 资料" })
-      .fill("天气")
+    await page.getByRole("searchbox", { name: "搜索 API 资料" }).fill("天气")
 
     await expect(page.getByTestId("static-catalog-entry")).toHaveCount(1)
     await expect(page.getByText("Open-Meteo 天气与空气质量")).toBeVisible()
@@ -48,7 +46,7 @@ test.describe("static API catalog", () => {
     await page.goto("/")
 
     await page
-      .getByRole("searchbox", { name: "搜索免费 API 资料" })
+      .getByRole("searchbox", { name: "搜索 API 资料" })
       .fill("不存在的接口")
 
     await expect(page.getByTestId("static-catalog-entry")).toHaveCount(0)
@@ -63,9 +61,7 @@ test.describe("static API catalog", () => {
     page.on("request", (request) => requests.push(request.url()))
 
     await page.goto("/")
-    await page
-      .getByRole("searchbox", { name: "搜索免费 API 资料" })
-      .fill("天气")
+    await page.getByRole("searchbox", { name: "搜索 API 资料" }).fill("天气")
     await page.getByRole("button", { name: "生活与公共数据" }).click()
     await expect(page.getByTestId("static-catalog-entry")).toHaveCount(1)
 
@@ -81,7 +77,7 @@ test.describe("static API catalog", () => {
     await page.getByRole("button", { name: "生活与公共数据" }).click()
     await expect(page.getByTestId("static-catalog-entry")).toHaveCount(3)
     await expect(
-      page.getByRole("link", { name: "阅读 Open-Meteo 官方文档" }),
+      page.getByRole("link", { name: "打开 Open-Meteo 官方文档" }),
     ).toHaveAttribute("href", "https://open-meteo.com/en/docs")
   })
 
@@ -89,10 +85,10 @@ test.describe("static API catalog", () => {
     await page.goto("/")
 
     await expect(
-      page.getByRole("heading", { name: "免费 API 资料册" }),
+      page.getByRole("heading", { name: "免费 API 收集目录" }),
     ).toBeVisible()
     await expect(
-      page.getByRole("searchbox", { name: "搜索免费 API 资料" }),
+      page.getByRole("searchbox", { name: "搜索 API 资料" }),
     ).toBeVisible()
     await expect(page.getByTestId("static-catalog-entry").first()).toBeVisible()
   })

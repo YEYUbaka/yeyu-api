@@ -1,5 +1,7 @@
 # Yeyu API 首期平台实施计划
 
+> 历史实施计划：用户已将首期范围改为纯静态 API 收集目录。本文中的账号、API Key、动态服务、数据库、缓存、在线调用和部署平台任务不再执行；当前计划以 `E:\AI_projects\yeyu-api\plans\static-api-directory-only.md` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use `subagent-driven-development` or `executing-plans` to implement this plan task-by-task. Each step uses checkbox syntax and ends with an independently verifiable result.
 
 **Goal:** 在官方 Full Stack FastAPI Template 基础上，交付一个可本地验证、可审计、可回滚的 Yeyu API 首期平台：账号体系、API 目录、独立 API Key、限流/额度、受控接口执行、缓存降级、A+B 首页、管理端和部署验收资料。

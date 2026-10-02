@@ -1,61 +1,39 @@
-# Yeyu API
+# Yeyu API 收集目录
 
-[![Test Docker Compose](../../actions/workflows/test-docker-compose.yml/badge.svg)](../../actions/workflows/test-docker-compose.yml)
-[![Test Backend](../../actions/workflows/test-backend.yml/badge.svg)](../../actions/workflows/test-backend.yml)
+这是一个面向学生和个人开发者的静态免费 API 收集目录，负责整理 API 来源、官方文档、免费说明和使用边界。
 
-Yeyu API 是独立的公益 API 聚合平台。本仓库当前处于 Task 1 框架基线阶段，业务域仍按后续任务边界逐步替换官方模板示例。
+页面只做本地搜索、分类筛选和官方链接跳转，不提供 API 调用、登录、API Key、代理、数据库、缓存或在线调试。
 
-官方 Full Stack FastAPI Template 的固定来源、准确 commit、许可证、导入边界和验证记录见 [`docs/framework-baseline.md`](./docs/framework-baseline.md)。
+当前范围说明见 [`docs/2026-10-02-static-api-directory-scope.md`](./docs/2026-10-02-static-api-directory-scope.md)，实施计划见 [`plans/static-api-directory-only.md`](./plans/static-api-directory-only.md)。
 
-## Technology Stack and Features
+## 当前技术栈
 
-- ⚡ [**FastAPI**](https://fastapi.tiangolo.com) for the Python backend API.
-  - 🧰 [SQLModel](https://sqlmodel.tiangolo.com) for the Python SQL database interactions (ORM).
-  - 🔍 [Pydantic](https://docs.pydantic.dev), used by FastAPI, for the data validation and settings management.
-  - 💾 [PostgreSQL](https://www.postgresql.org) as the SQL database.
-- 🚀 [React](https://react.dev) for the frontend.
-  - 🧩 Built into the backend application and served by FastAPI on the same domain as the API.
-  - 💃 Using TypeScript, hooks, [Vite](https://vitejs.dev), and other parts of a modern frontend stack.
-  - 🎨 [Tailwind CSS](https://tailwindcss.com) and [shadcn/ui](https://ui.shadcn.com) for the frontend components.
-  - 🤖 An automatically generated frontend client.
-  - 🧪 [Playwright](https://playwright.dev) for end-to-end testing.
-  - 🦇 Dark mode support.
-- 🐋 [Docker Compose](https://www.docker.com) for local development and integration services.
-  - 📞 [Traefik](https://traefik.io) as a local reverse proxy.
-- 🔒 Secure password hashing by default.
-- 🔑 JWT (JSON Web Token) authentication.
-- 📫 Email-based password recovery.
-- ✉️ [React Email](https://react.email) for email templates.
-- 📬 [Mailpit](https://mailpit.axllent.org) for local email testing during development.
-- ✅ Tests with [Pytest](https://pytest.org).
-- 🏭 CI (continuous integration) based on GitHub Actions.
+- React、TypeScript、Vite、pnpm；
+- 编译期 JSON 资料目录；
+- 浏览器端本地搜索和分类筛选；
+- Playwright 桌面/移动端静态验收；
+- 静态构建包和带 commit 的发布元数据。
 
-## Local Baseline
+仓库中保留的 FastAPI、数据库、Redis、Compose 和登录代码属于历史实验范围，不参与当前默认构建和静态发布。
 
-使用项目独立的 conda 环境和 pnpm 入口，不使用 conda base 或 Windows Store Python。
+## 本地验证
+
+使用项目独立的 conda 环境和 pnpm 入口，不使用 conda base 或 Windows Store Python。当前静态目录不需要 Python 运行时。
 
 ```powershell
-conda run -n yeyu-api python -m pytest E:\AI_projects\yeyu-api\backend\tests -q
+pnpm --dir E:\AI_projects\yeyu-api\frontend run validate:static-catalog
 pnpm --dir E:\AI_projects\yeyu-api\frontend run build
-pnpm --dir E:\AI_projects\yeyu-api\frontend exec playwright test
+pnpm --dir E:\AI_projects\yeyu-api\frontend test
 ```
 
-Docker Compose 仅作为本地集成栈入口；如果本机没有 Docker，只记录为未验证，不安装 Docker 或触碰线上服务。
+默认 `build`、`test` 和 `preview` 只针对静态目录。历史动态平台如需单独研究，使用带 `:legacy` 后缀的脚本，并不得用于 `api.yeyubaka.top` 静态发布。
 
-## Backend Development
+## 前端开发
 
-Backend docs: [backend/README.md](./backend/README.md).
+前端目录说明见 [`frontend/README.md`](./frontend/README.md)。静态入口是 `frontend/static-catalog.html`，资料数据是 `frontend/src/staticCatalog/data.json`。
 
-## Frontend Development
+## 发布边界
 
-Frontend docs: [frontend/README.md](./frontend/README.md).
+当前只生成本地静态产物。未来正式发布前，必须单独确认 DNS、证书、服务器权限和 `api.yeyubaka.top` 专用 Nginx vhost；不得覆盖旧个人网站、`new.api.yeyubaka.top` 或其他服务。
 
-## Development
-
-General development docs: [development.md](./development.md).
-
-This includes the local FastAPI and Vite workflow, Docker Compose services, `.env` configuration, and more.
-
-## License
-
-The Full Stack FastAPI Template is licensed under the terms of the MIT license.
+第三方 API 的许可、免费额度和使用规则以各自官方页面为准；目录本身不代表再分发授权。

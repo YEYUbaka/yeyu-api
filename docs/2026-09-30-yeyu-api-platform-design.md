@@ -1,5 +1,7 @@
 # Yeyu API 公益聚合平台设计说明
 
+> 历史设计记录：用户已将首期范围改为纯静态 API 收集目录。本文中的登录、API Key、动态服务、数据库、缓存和代理设计均不属于当前交付范围；当前范围以 `E:\AI_projects\yeyu-api\docs\2026-10-02-static-api-directory-scope.md` 为准。
+
 状态：设计稿 v0.1，已确认首页采用 A+B 组合方向；本文件完成后仍需用户审阅，审阅通过后才进入实施计划和代码阶段。
 
 项目根目录：`E:\AI_projects\yeyu-api`

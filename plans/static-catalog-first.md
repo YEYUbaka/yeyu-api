@@ -1,5 +1,7 @@
 # Static API Catalog First Implementation Plan
 
+> 历史执行记录：当前范围已进一步收缩为“只收集 API 资料的静态目录”。新的权威计划是 `E:\AI_projects\yeyu-api\plans\static-api-directory-only.md`。本文保留已完成静态目录阶段的证据，但其中动态平台、登录、API Key 和运行时服务任务不再执行。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use subagent-driven-development or executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 先在 `E:\AI_projects\yeyu-api` 本地完成公益 API 平台，再单独生成一个不依赖后端、只展示审核资料的免费 API 静态目录站；动态 API、账号、Key、PostgreSQL、Redis、SMTP、OAuth 暂不上线。
