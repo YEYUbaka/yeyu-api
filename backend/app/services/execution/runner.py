@@ -4,6 +4,8 @@ from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeout
 from datetime import datetime
+from threading import BoundedSemaphore, Lock
+from time import monotonic
 from typing import Any, Protocol
 
 from app.services.execution.models import (
@@ -19,6 +21,9 @@ from app.services.execution.models import (
     validate_finite_json_mapping,
 )
 from app.services.execution.registry import AdapterRegistry, UnknownApiSlug
+
+DEFAULT_MAX_WORKERS = 8
+MAX_WORKERS = 64
 
 
 class CacheServiceLike(Protocol):
@@ -56,9 +61,21 @@ class ApiRunner:
         *,
         registry: AdapterRegistry | None = None,
         cache: CacheServiceLike | None = None,
+        max_workers: int = DEFAULT_MAX_WORKERS,
     ) -> None:
+        if isinstance(max_workers, bool) or not isinstance(max_workers, int):
+            raise ValueError("max_workers must be an integer")
+        if not 1 <= max_workers <= MAX_WORKERS:
+            raise ValueError("max_workers is outside the hard limit")
         self.registry = registry or AdapterRegistry()
         self.cache = cache
+        self._executor = ThreadPoolExecutor(
+            max_workers=max_workers,
+            thread_name_prefix="yeyu-execution",
+        )
+        self._slots = BoundedSemaphore(max_workers)
+        self._state_lock = Lock()
+        self._closed = False
 
     @staticmethod
     def _meta(
@@ -88,7 +105,11 @@ class ApiRunner:
         return ApiResponse(
             success=False,
             data=None,
-            error={"code": error.code, "message": error.public_message},
+            error={
+                "code": error.code,
+                "message": error.public_message,
+                "request_id": context.request_id,
+            },
             meta=cls._meta(
                 context,
                 cache_hit=False,
@@ -109,24 +130,54 @@ class ApiRunner:
         data_at = getattr(metadata, "data_at", None)
         return payload, data_at if isinstance(data_at, datetime) else None
 
-    @staticmethod
+    def _release_slot(self, _future: Any) -> None:
+        try:
+            self._slots.release()
+        except ValueError:
+            pass
+
     def _run_adapter(
+        self,
         adapter: ApiAdapter,
         context: ExecutionContext,
         params: Mapping[str, Any],
     ) -> AdapterResult:
-        executor = ThreadPoolExecutor(
-            max_workers=1,
-            thread_name_prefix="yeyu-execution",
-        )
-        future = executor.submit(adapter.execute, context, params)
+        started = monotonic()
+        timeout_seconds = context.timeout_ms / 1000
+        if not self._slots.acquire(timeout=timeout_seconds):
+            raise AdapterTimeout("adapter execution capacity is unavailable")
+
+        with self._state_lock:
+            if self._closed:
+                self._slots.release()
+                raise UpstreamError("adapter runner is closed")
+            try:
+                future = self._executor.submit(adapter.execute, context, params)
+            except Exception as exc:
+                self._slots.release()
+                raise UpstreamError("adapter execution could not be scheduled") from exc
+            future.add_done_callback(self._release_slot)
+
+        remaining = timeout_seconds - (monotonic() - started)
+        if remaining <= 0:
+            future.cancel()
+            raise AdapterTimeout("adapter exceeded the execution context timeout")
         try:
-            return future.result(timeout=context.timeout_ms / 1000)
+            return future.result(timeout=remaining)
         except FutureTimeout as exc:
             future.cancel()
             raise AdapterTimeout("adapter exceeded the execution context timeout") from exc
-        finally:
-            executor.shutdown(wait=False, cancel_futures=True)
+
+    def close(self, *, wait: bool = True, cancel_futures: bool = True) -> None:
+        with self._state_lock:
+            if self._closed:
+                return
+            self._closed = True
+            executor = self._executor
+        executor.shutdown(wait=wait, cancel_futures=cancel_futures)
+
+    def shutdown(self, *, wait: bool = True, cancel_futures: bool = True) -> None:
+        self.close(wait=wait, cancel_futures=cancel_futures)
 
     def _fresh_cache(
         self,
@@ -194,9 +245,14 @@ class ApiRunner:
                 InvalidParameters("execution context does not match API slug"),
             )
         try:
-            safe_params = validate_finite_json_mapping(params)
+            validated_params = adapter.validate_params(params)
+            if not isinstance(validated_params, Mapping):
+                raise InvalidParameters("adapter parameters are invalid")
+            safe_params = validate_finite_json_mapping(validated_params)
         except ExecutionError as exc:
             return self._failure(context, exc)
+        except Exception:
+            return self._failure(context, InvalidParameters("parameters are invalid"))
 
         fresh = self._fresh_cache(adapter, context, safe_params)
         if fresh is not None:

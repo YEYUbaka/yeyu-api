@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import inspect
 import json
 import re
 import socket
+import threading
 from collections.abc import Callable, Iterable, Mapping
 from ipaddress import ip_address
 from time import monotonic
@@ -15,6 +18,7 @@ from app.services.execution.models import (
     AdapterTimeout,
     ApiAdapter,
     ExecutionContext,
+    ExecutionError,
     InvalidParameters,
     RedirectRejected,
     ResourceLimitExceeded,
@@ -26,6 +30,7 @@ from app.services.execution.models import (
 
 DEFAULT_MAX_RESPONSE_BYTES = 64 * 1024
 HARD_MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+MAX_LOCATION_BYTES = 2048
 MAX_RETRIES = 3
 MAX_REDIRECTS = 3
 _PROVIDER_REF_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,254}\Z")
@@ -83,6 +88,47 @@ def _reject_json_constant(value: str) -> None:
 
 def _is_timeout(error: BaseException) -> bool:
     return isinstance(error, TimeoutError) or "timeout" in type(error).__name__.lower()
+
+
+def _close_response(response: Any) -> None:
+    """Close sync or async response objects without exposing close failures."""
+
+    close = getattr(response, "close", None)
+    if callable(close):
+        try:
+            close()
+        except Exception:
+            pass
+        return
+
+    aclose = getattr(response, "aclose", None)
+    if not callable(aclose):
+        return
+    try:
+        awaitable = aclose()
+    except Exception:
+        return
+    if not inspect.isawaitable(awaitable):
+        return
+
+    def run_awaitable() -> None:
+        try:
+            async def await_close() -> None:
+                await awaitable
+
+            asyncio.run(await_close())
+        except Exception:
+            pass
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        run_awaitable()
+        return
+
+    thread = threading.Thread(target=run_awaitable, daemon=True)
+    thread.start()
+    thread.join()
 
 
 def _safe_address(value: str) -> bool:
@@ -150,15 +196,19 @@ class AllowlistedHttpAdapter(ApiAdapter):
         if host not in normalized_hosts:
             raise UnsafeTarget("endpoint host is not allowlisted")
         try:
-            port = parsed.port or 443
+            explicit_port = parsed.port
         except ValueError as exc:
             raise UnsafeTarget("endpoint port is invalid") from exc
+        port = 443 if explicit_port is None else explicit_port
         if not 1 <= port <= 65535:
             raise UnsafeTarget("endpoint port is invalid")
         path = parsed.path or "/"
         if not _path_is_safe(path) or "%" in path:
             raise UnsafeTarget("endpoint path is invalid")
-        netloc = host if port == 443 and parsed.port is None else self._format_netloc(host, port)
+        if explicit_port is None and port == 443:
+            netloc = f"[{host}]" if ":" in host else host
+        else:
+            netloc = self._format_netloc(host, port)
         self.endpoint = urlunsplit(("https", netloc, path, "", ""))
         self._fixed_host = host
         self._fixed_port = port
@@ -230,7 +280,7 @@ class AllowlistedHttpAdapter(ApiAdapter):
             raise ValueError("too many allowed parameters")
         return schema
 
-    def _validate_params(self, params: Mapping[str, Any]) -> dict[str, Any]:
+    def validate_params(self, params: Mapping[str, Any]) -> dict[str, Any]:
         values = validate_finite_json_mapping(params, max_bytes=MAX_PARAMETER_BYTES)
         if set(values) - set(self._parameter_schema):
             raise InvalidParameters("parameter is not declared by the provider adapter")
@@ -245,31 +295,42 @@ class AllowlistedHttpAdapter(ApiAdapter):
                 raise InvalidParameters("provider parameters must be scalar values")
         return values
 
-    def _validate_target(self, target: str, *, initial: bool) -> None:
+    def _validate_target(self, target: str, *, initial: bool) -> tuple[str, ...]:
+        def reject_redirect(message: str) -> None:
+            if initial:
+                raise UnsafeTarget(message)
+            raise RedirectRejected(message)
+
         try:
             parsed = urlsplit(target)
             host = _normalize_host(parsed.hostname or "")
-            port = parsed.port or 443
+            explicit_port = parsed.port
+            port = 443 if explicit_port is None else explicit_port
         except (ValueError, UnsafeTarget) as exc:
-            raise UnsafeTarget("upstream target is invalid") from exc
+            if initial:
+                raise UnsafeTarget("upstream target is invalid") from exc
+            raise RedirectRejected("upstream redirect target is invalid") from exc
         if parsed.scheme.lower() != "https":
-            raise UnsafeTarget("upstream target must use HTTPS")
+            reject_redirect("upstream target must use HTTPS")
         if parsed.username is not None or parsed.password is not None:
-            raise UnsafeTarget("upstream target credentials are not allowed")
+            reject_redirect("upstream target credentials are not allowed")
         if parsed.fragment or not _path_is_safe(parsed.path or "/"):
-            raise UnsafeTarget("upstream target path is invalid")
-        if host not in self._allowed_hosts or port != self._fixed_port:
-            raise UnsafeTarget("upstream target is not allowlisted")
+            reject_redirect("upstream target path is invalid")
+        path = parsed.path or "/"
+        if host not in self._allowed_hosts or host != self._fixed_host or port != self._fixed_port:
+            reject_redirect("upstream target is not allowlisted")
+        if path != self._fixed_path:
+            reject_redirect("upstream target changed the fixed endpoint")
         try:
             literal_host = ip_address(host)
         except ValueError:
             literal_host = None
         if literal_host is not None and not _safe_address(str(literal_host)):
             raise UnsafeTarget("upstream literal address is not allowed")
-        if initial and (host != self._fixed_host or (parsed.path or "/") != self._fixed_path):
-            raise UnsafeTarget("request target changed the fixed endpoint")
-        if host in _UNSAFE_HOSTS or host.rstrip(".") in _UNSAFE_HOSTS:
-            raise UnsafeTarget("upstream hostname is not allowed")
+        if host in _UNSAFE_HOSTS:
+            if initial:
+                raise UnsafeTarget("upstream hostname is not allowed")
+            raise RedirectRejected("upstream redirect hostname is not allowed")
         try:
             addresses = list(self._resolver(host, port))
         except UnsafeTarget:
@@ -278,29 +339,40 @@ class AllowlistedHttpAdapter(ApiAdapter):
             raise UpstreamError("upstream DNS resolution failed") from exc
         if not addresses:
             raise UpstreamError("upstream DNS resolution returned no address")
+        validated: list[str] = []
         for address in addresses:
-            if not _safe_address(str(address)):
+            try:
+                normalized_address = str(ip_address(address))
+            except (TypeError, ValueError) as exc:
+                raise UnsafeTarget("upstream address is invalid") from exc
+            if not _safe_address(normalized_address):
                 raise UnsafeTarget("upstream address is not allowed")
+            if normalized_address not in validated:
+                validated.append(normalized_address)
+        if not validated:
+            raise UpstreamError("upstream DNS resolution returned no address")
+        return tuple(validated)
 
-    def _request(self, url: str, *, timeout_seconds: float) -> Any:
+    def _request(
+        self,
+        url: str,
+        *,
+        resolved_addresses: tuple[str, ...],
+        timeout_seconds: float,
+    ) -> Any:
         if self._http_client is None:
             raise UpstreamError("HTTP client is not configured")
-        request = getattr(self._http_client, "request", None)
-        if callable(request):
-            return request(
+        request_pinned = getattr(self._http_client, "request_pinned", None)
+        if callable(request_pinned):
+            return request_pinned(
                 "GET",
                 url,
+                resolved_addresses=resolved_addresses,
                 timeout=timeout_seconds,
+                stream=True,
                 follow_redirects=False,
             )
-        if callable(self._http_client):
-            return self._http_client(
-                "GET",
-                url,
-                timeout=timeout_seconds,
-                follow_redirects=False,
-            )
-        raise UpstreamError("HTTP client is invalid")
+        raise UpstreamError("HTTP client does not support pinned requests")
 
     def _read_body(self, response: Any) -> bytes:
         headers = getattr(response, "headers", {})
@@ -315,19 +387,12 @@ class AllowlistedHttpAdapter(ApiAdapter):
             except ValueError as exc:
                 raise UpstreamError("upstream response length is invalid") from exc
 
+        iterator = getattr(response, "iter_bytes", None)
+        if not callable(iterator):
+            raise UpstreamError("upstream response does not support bounded streaming")
         chunks: list[bytes] = []
         total = 0
-        iterator = getattr(response, "iter_bytes", None)
-        if callable(iterator):
-            source = iterator()
-        else:
-            body = getattr(response, "content", None)
-            if body is None:
-                reader = getattr(response, "read", None)
-                body = reader() if callable(reader) else None
-            if not isinstance(body, (bytes, bytearray)):
-                raise UpstreamError("upstream response body is unavailable")
-            source = (bytes(body),)
+        source = iterator()
         for chunk in source:
             if not isinstance(chunk, (bytes, bytearray)):
                 raise UpstreamError("upstream response body is invalid")
@@ -337,14 +402,12 @@ class AllowlistedHttpAdapter(ApiAdapter):
             chunks.append(bytes(chunk))
         return b"".join(chunks)
 
-    def _decode_json(self, response: Any) -> Any:
-        headers = getattr(response, "headers", {})
+    def _decode_json(self, headers: Mapping[str, Any], body: bytes) -> Any:
         if not isinstance(headers, Mapping):
             headers = {}
         content_type = _header(headers, "content-type")
         if content_type is not None and "json" not in content_type.lower():
             raise UpstreamError("upstream response is not JSON")
-        body = self._read_body(response)
         try:
             value = json.loads(body.decode("utf-8"), parse_constant=_reject_json_constant)
         except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
@@ -357,7 +420,7 @@ class AllowlistedHttpAdapter(ApiAdapter):
         context: ExecutionContext,
         params: Mapping[str, Any],
     ) -> AdapterResult:
-        values = self._validate_params(params)
+        values = self.validate_params(params)
         query = urlencode(sorted(values.items()), doseq=False)
         target = self.endpoint if not query else f"{self.endpoint}?{query}"
         deadline = monotonic() + context.timeout_ms / 1000
@@ -367,10 +430,11 @@ class AllowlistedHttpAdapter(ApiAdapter):
             remaining = deadline - monotonic()
             if remaining <= 0:
                 raise AdapterTimeout("upstream request exceeded the execution context timeout")
-            self._validate_target(target, initial=redirects == 0)
+            resolved_addresses = self._validate_target(target, initial=redirects == 0)
             try:
                 response = self._request(
                     target,
+                    resolved_addresses=resolved_addresses,
                     timeout_seconds=max(0.001, remaining),
                 )
             except Exception as exc:
@@ -386,35 +450,46 @@ class AllowlistedHttpAdapter(ApiAdapter):
                     continue
                 raise UpstreamError("upstream request failed") from exc
 
-            status_code = getattr(response, "status_code", None)
-            if not isinstance(status_code, int):
-                raise UpstreamError("upstream response status is invalid")
-            if 300 <= status_code < 400:
-                if not self._allow_redirects:
-                    raise RedirectRejected("upstream redirects are disabled")
-                if redirects >= self._max_redirects:
-                    raise RedirectRejected("upstream redirect limit exceeded")
-                headers = getattr(response, "headers", {})
-                location = _header(headers, "location") if isinstance(headers, Mapping) else None
-                if not location:
-                    raise RedirectRejected("upstream redirect has no location")
-                target = urljoin(target, location)
-                redirects += 1
-                attempts = 0
-                continue
-            if status_code < 200 or status_code >= 300:
-                if status_code >= 500 and attempts < self._max_retries and monotonic() < deadline:
-                    attempts += 1
-                    continue
-                raise UpstreamError("upstream returned an error status")
             try:
-                data = self._decode_json(response)
+                status_code = getattr(response, "status_code", None)
+                headers = getattr(response, "headers", {})
+                body = self._read_body(response)
+                if not isinstance(status_code, int):
+                    raise UpstreamError("upstream response status is invalid")
+                if 300 <= status_code < 400:
+                    if not self._allow_redirects:
+                        raise RedirectRejected("upstream redirects are disabled")
+                    if redirects >= self._max_redirects:
+                        raise RedirectRejected("upstream redirect limit exceeded")
+                    location = _header(headers, "location") if isinstance(headers, Mapping) else None
+                    if not location:
+                        raise RedirectRejected("upstream redirect has no location")
+                    if (
+                        len(location.encode("utf-8")) > MAX_LOCATION_BYTES
+                        or any(character in location for character in "\x00\r\n")
+                    ):
+                        raise RedirectRejected("upstream redirect location is too large")
+                    target = urljoin(target, location)
+                    redirects += 1
+                    attempts = 0
+                    continue
+                if status_code < 200 or status_code >= 300:
+                    if status_code >= 500 and attempts < self._max_retries and monotonic() < deadline:
+                        attempts += 1
+                        continue
+                    raise UpstreamError("upstream returned an error status")
+                data = self._decode_json(headers, body)
             except Exception as exc:
                 if _is_timeout(exc):
+                    if attempts < self._max_retries and monotonic() < deadline:
+                        attempts += 1
+                        continue
                     raise AdapterTimeout("upstream response timed out") from exc
-                if isinstance(exc, (ResourceLimitExceeded, UpstreamError)):
+                if isinstance(exc, ExecutionError):
                     raise
                 raise UpstreamError("upstream response could not be read") from exc
+            finally:
+                _close_response(response)
             return AdapterResult(data=data, data_at=context.now)
 
 

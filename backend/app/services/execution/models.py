@@ -10,6 +10,8 @@ from ipaddress import IPv4Address, IPv6Address, ip_address
 from typing import Any, ClassVar
 from uuid import UUID
 
+from pydantic import BaseModel, ConfigDict, StrictBool, field_validator, model_validator
+
 MAX_PARAMETER_BYTES = 4 * 1024
 MAX_ADAPTER_RESPONSE_BYTES = 64 * 1024
 MAX_TIMEOUT_MS = 120_000
@@ -236,6 +238,11 @@ class ApiAdapter:
     cacheable: ClassVar[bool] = False
     max_response_bytes: ClassVar[int] = MAX_ADAPTER_RESPONSE_BYTES
 
+    def validate_params(self, params: Mapping[str, Any]) -> dict[str, Any]:
+        """Validate parameters before cache lookup or adapter execution."""
+
+        return validate_finite_json_mapping(params, max_bytes=MAX_PARAMETER_BYTES)
+
     def execute(
         self,
         context: ExecutionContext,
@@ -260,26 +267,76 @@ class AdapterResult:
         object.__setattr__(self, "meta", dict(self.meta))
 
 
-@dataclass(frozen=True, slots=True)
-class ApiResponse:
-    success: bool
+_PUBLIC_ERROR_KEYS = frozenset({"code", "message", "request_id"})
+_PUBLIC_TEXT_URL_PATTERN = re.compile(r"[A-Za-z][A-Za-z0-9+.-]*://")
+
+
+class ApiResponse(BaseModel):
+    """Strict public execution envelope with dictionary compatibility helpers."""
+
+    model_config = ConfigDict(extra="forbid", validate_assignment=True)
+
+    success: StrictBool
     data: Any | None
     error: dict[str, Any] | None
     meta: dict[str, Any]
 
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "success": self.success,
-            "data": self.data,
-            "error": self.error,
-            "meta": dict(self.meta),
-        }
+    @field_validator("error", mode="before")
+    @classmethod
+    def _validate_error(cls, value: Any) -> dict[str, Any] | None:
+        if value is None:
+            return None
+        if not isinstance(value, Mapping):
+            raise ValueError("error must be an object")
+        error = dict(value)
+        if set(error) != _PUBLIC_ERROR_KEYS:
+            raise ValueError("error contains fields outside the public envelope")
+        for field_name in _PUBLIC_ERROR_KEYS:
+            field_value = error[field_name]
+            if not isinstance(field_value, str) or not field_value.strip():
+                raise ValueError(f"error.{field_name} must be a non-empty string")
+            if "\n" in field_value or "\r" in field_value:
+                raise ValueError(f"error.{field_name} contains an invalid character")
+            if _PUBLIC_TEXT_URL_PATTERN.search(field_value):
+                raise ValueError(f"error.{field_name} must not contain a URL")
+            if len(field_value) > 1024:
+                raise ValueError(f"error.{field_name} is too long")
+        return error
 
-    def model_dump(self) -> dict[str, Any]:
-        return self.to_dict()
+    @field_validator("meta", mode="before")
+    @classmethod
+    def _validate_meta(cls, value: Any) -> dict[str, Any]:
+        if not isinstance(value, Mapping):
+            raise ValueError("meta must be an object")
+        meta = dict(value)
+        sensitive_keys = {
+            "authorization",
+            "cookie",
+            "headers",
+            "password",
+            "secret",
+            "stack",
+            "token",
+            "traceback",
+            "url",
+        }
+        if any(str(key).lower() in sensitive_keys for key in meta):
+            raise ValueError("meta contains sensitive fields")
+        return meta
+
+    @model_validator(mode="after")
+    def _validate_success_error_consistency(self) -> ApiResponse:
+        if self.success and self.error is not None:
+            raise ValueError("successful responses must not contain an error")
+        if not self.success and self.error is None:
+            raise ValueError("failed responses must contain an error")
+        return self
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump()
 
     def __getitem__(self, key: str) -> Any:
-        return self.to_dict()[key]
+        return self.model_dump()[key]
 
     def get(self, key: str, default: Any = None) -> Any:
-        return self.to_dict().get(key, default)
+        return self.model_dump().get(key, default)
