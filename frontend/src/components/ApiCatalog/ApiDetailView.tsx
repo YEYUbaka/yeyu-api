@@ -10,6 +10,9 @@ import {
   formatMetadata,
   formatUpdatedAt,
   normalizeInternalApiPath,
+  normalizeSafeQueryKey,
+  normalizeSafeQueryValue,
+  PUBLIC_API_AUTH_HEADER,
   PUBLIC_API_BASE_URL,
   responseProperties,
   sanitizeMetadata,
@@ -27,19 +30,30 @@ function parameterExamples(detail: ApiDetail): QueryExample[] {
       return []
     }
 
-    const name = asText(safeParameter.name, "")
+    const name = normalizeSafeQueryKey(safeParameter.name)
     if (!name) return []
 
     const schema = asRecord(safeParameter.schema)
-    const examples = schema?.examples
-    const example = Array.isArray(examples) ? examples[0] : undefined
-    const value = asText(example ?? schema?.default, "value")
+    const candidates = [
+      ...(Array.isArray(schema?.examples) ? schema.examples : []),
+      schema?.default,
+    ]
+    const value = candidates
+      .map((candidate) => normalizeSafeQueryValue(candidate))
+      .find((candidate): candidate is string => candidate !== undefined)
+    if (!value) return []
+
     return [{ name, value }]
   })
 }
 
-function buildCodeExamples(detail: ApiDetail, authHeader: string) {
-  const method = detail.method.toUpperCase()
+function quoteCurlArgument(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`
+}
+
+function buildCodeExamples(detail: ApiDetail) {
+  const candidateMethod = detail.method.toUpperCase()
+  const method = /^[A-Z]{1,16}$/.test(candidateMethod) ? candidateMethod : "GET"
   const queryParameters = parameterExamples(detail)
   const path = normalizeInternalApiPath(detail.path)
   const absoluteUrl = buildPublicApiUrl(path)
@@ -54,11 +68,16 @@ function buildCodeExamples(detail: ApiDetail, authHeader: string) {
 
   const curlStart =
     method === "GET"
-      ? `curl -G "${absoluteUrl}"`
-      : `curl -X ${method} "${absoluteUrl}"`
-  const curlLines = [curlStart, `  -H "${authHeader}: <YOUR_API_KEY>"`]
+      ? `curl -G ${quoteCurlArgument(absoluteUrl)}`
+      : `curl -X ${method} ${quoteCurlArgument(absoluteUrl)}`
+  const curlLines = [
+    curlStart,
+    `  -H ${quoteCurlArgument(`${PUBLIC_API_AUTH_HEADER}: <YOUR_API_KEY>`)}`,
+  ]
   for (const parameter of queryParameters) {
-    curlLines.push(`  --data-urlencode "${parameter.name}=${parameter.value}"`)
+    curlLines.push(
+      `  --data-urlencode ${quoteCurlArgument(`${parameter.name}=${parameter.value}`)}`,
+    )
   }
 
   const javascriptLines = [
@@ -71,7 +90,7 @@ function buildCodeExamples(detail: ApiDetail, authHeader: string) {
     "const response = await fetch(endpoint, {",
     `  method: ${JSON.stringify(method)},`,
     "  headers: {",
-    `    ${JSON.stringify(authHeader)}: "<YOUR_API_KEY>",`,
+    `    ${JSON.stringify(PUBLIC_API_AUTH_HEADER)}: "<YOUR_API_KEY>",`,
     "  },",
     "});",
     "const data = await response.json();",
@@ -84,7 +103,7 @@ function buildCodeExamples(detail: ApiDetail, authHeader: string) {
     "response = requests.request(",
     `    ${JSON.stringify(method)},`,
     `    ${JSON.stringify(absoluteUrl)},`,
-    `    headers={${JSON.stringify(authHeader)}: "<YOUR_API_KEY>"},`,
+    `    headers={${JSON.stringify(PUBLIC_API_AUTH_HEADER)}: "<YOUR_API_KEY>"},`,
     ...(queryParameters.length
       ? [
           `    params=${JSON.stringify(Object.fromEntries(queryParameters.map((parameter) => [parameter.name, parameter.value])))},`,
@@ -114,8 +133,8 @@ interface ApiDetailViewProps {
 }
 
 export function ApiDetailView({ detail }: ApiDetailViewProps) {
-  const authHeader = detail.auth.header ?? "X-API-Key"
-  const examples = buildCodeExamples(detail, authHeader)
+  const authHeader = PUBLIC_API_AUTH_HEADER
+  const examples = buildCodeExamples(detail)
   const responseFields = responseProperties(detail)
   const safePath = normalizeInternalApiPath(detail.path)
   const safeCacheRules = asRecord(sanitizeMetadata(detail.cache_rules)) ?? {}
@@ -198,10 +217,9 @@ export function ApiDetailView({ detail }: ApiDetailViewProps) {
                       const safeParameter =
                         asRecord(sanitizeMetadata(parameter)) ?? {}
                       const schema = asRecord(safeParameter.schema)
-                      const name = asText(
-                        safeParameter.name,
-                        `参数 ${index + 1}`,
-                      )
+                      const name =
+                        normalizeSafeQueryKey(safeParameter.name) ??
+                        `参数 ${index + 1}`
                       const schemaText = asText(schema?.type, "—")
                       const description = asText(safeParameter.description, "")
                       return (

@@ -75,17 +75,41 @@ const timeDetail = {
 
 const unsafeDetail = {
   ...timeDetail,
+  auth: {
+    type: "api_key",
+    header: 'X-Evil-Header: "<NON_SECRET_TEST_VALUE>"',
+  },
   path: "https://evil.example/redirect?token=<NON_SECRET_TEST_VALUE>",
   parameters: [
     ...timeDetail.parameters,
     {
-      name: "metadata",
+      name: 'bad"name`$()',
       in: "query",
       required: false,
-      description: "可见参数",
+      description: "恶意参数",
       schema: {
         type: "string",
-        "client-secret": "<NON_SECRET_TEST_VALUE>",
+        examples: ["$(whoami)\n`id`"],
+        default: "<NON_SECRET_TEST_VALUE>",
+      },
+    },
+    {
+      name: "unsafe-value",
+      in: "query",
+      required: false,
+      description: "恶意默认值",
+      schema: {
+        type: "string",
+        examples: [
+          " https://evil.example/?next=<NON_SECRET_TEST_VALUE> ",
+          '"quoted"',
+          "percent%20",
+          "query?next=evil",
+          "hash#evil",
+          "back\\slash",
+          "Asia/Shanghai",
+        ],
+        default: "secret-token-<NON_SECRET_TEST_VALUE>",
       },
     },
   ],
@@ -114,6 +138,11 @@ const unsafeDetail = {
     "provider-ref": "<NON_SECRET_TEST_VALUE>",
     safe: { nested_password: "<NON_SECRET_TEST_VALUE>" },
   },
+}
+
+const unsafeExamplesDetail = {
+  ...unsafeDetail,
+  path: "/v1/tools/time",
 }
 
 type CatalogPage = {
@@ -233,8 +262,31 @@ test("Catalog pagination preserves search filters and requests the selected page
   page,
 }) => {
   const catalogRequests: URL[] = []
+  const facetRequests: URL[] = []
   await page.route(catalogListUrl, async (route) => {
     const url = new URL(route.request().url())
+    const isFacetRequest =
+      url.searchParams.get("page_size") === "100" &&
+      !url.searchParams.has("query") &&
+      !url.searchParams.has("category") &&
+      !url.searchParams.has("status")
+    if (isFacetRequest) {
+      facetRequests.push(url)
+      const pageNumber = Number(url.searchParams.get("page") ?? "1")
+      const response: CatalogPage = {
+        data: pageNumber === 2 ? [uuidItem] : [timeItem],
+        count: 101,
+        page: pageNumber,
+        page_size: 100,
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(response),
+      })
+      return
+    }
+
     catalogRequests.push(url)
     const pageNumber = Number(url.searchParams.get("page") ?? "1")
     const response: CatalogPage = {
@@ -252,6 +304,26 @@ test("Catalog pagination preserves search filters and requests the selected page
 
   await page.goto("/catalog?query=time&category=tools&status=published")
   await expect(page.getByTestId("catalog-card-time")).toBeVisible()
+  await expect
+    .poll(() =>
+      facetRequests.some((request) => request.searchParams.get("page") === "2"),
+    )
+    .toBe(true)
+  expect(
+    facetRequests.every(
+      (request) => request.searchParams.get("query") === null,
+    ),
+  ).toBe(true)
+  expect(
+    facetRequests.every(
+      (request) => request.searchParams.get("category") === null,
+    ),
+  ).toBe(true)
+  expect(
+    facetRequests.every(
+      (request) => request.searchParams.get("status") === null,
+    ),
+  ).toBe(true)
   await expect(page.getByRole("button", { name: "下一页" })).toBeEnabled()
 
   await page.getByRole("button", { name: "下一页" }).click()
@@ -329,6 +401,31 @@ test("Detail rejects unsafe paths and hides sensitive metadata values", async ({
     "<NON_SECRET_TEST_VALUE>",
   )
   await expect(page.getByText("可见错误描述", { exact: true })).toBeVisible()
+})
+
+test("Detail omits unsafe parameter examples from every code sample", async ({
+  page,
+}) => {
+  await mockCatalogApi(page, unsafeExamplesDetail)
+  await page.goto("/catalog/time")
+
+  const codeSamples = await page
+    .locator(".code-example-block code")
+    .allTextContents()
+  expect(codeSamples).toHaveLength(3)
+
+  const renderedExamples = codeSamples.join("\n")
+  expect(renderedExamples).toContain("Asia/Shanghai")
+  expect(renderedExamples).toContain("X-API-Key")
+  expect(renderedExamples).toContain("<YOUR_API_KEY>")
+  expect(renderedExamples).not.toContain('bad"name`$()')
+  expect(renderedExamples).not.toContain(
+    "https://evil.example/?next=<NON_SECRET_TEST_VALUE>",
+  )
+  expect(renderedExamples).not.toContain("$(whoami)")
+  expect(renderedExamples).not.toContain("`id`")
+  expect(renderedExamples).not.toContain("secret-token-<NON_SECRET_TEST_VALUE>")
+  expect(renderedExamples).not.toContain("X-Evil-Header")
 })
 
 test("Detail errors do not render stale detail data", async ({ page }) => {

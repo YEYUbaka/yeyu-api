@@ -198,3 +198,38 @@ exit 0
 - 原有 Playwright `auth.setup.ts` 阻塞证据仍以本报告第 5 节为准；本次没有重试，也没有触碰认证配置或真实凭据。
 
 修复提交主题：`fix: close catalog review findings`
+
+## 10. 第二轮独立复审 Important 修复（2026-10-02）
+
+本轮只处理最新复审报告中的两个 Important，不修改任务 2、`frontend/src/routeTree.gen.ts`、后端、线上服务、DNS、Nginx 或真实凭据。
+
+### 10.1 参数示例值与认证头安全边界
+
+- `frontend/src/components/ApiCatalog/catalog-types.ts` 新增纯函数 `normalizeSafeQueryKey` 与 `normalizeSafeQueryValue`。
+- 参数名只接受以 ASCII 字母开头、长度受限且仅含字母数字、点、下划线和连字符的 query key；其他名称不进入代码示例，详情参数表也使用安全占位名称。
+- 参数值只接受严格字符 allowlist；拒绝空白、引号、反引号、shell 元字符、换行、百分号、query/hash、反斜杠、scheme/外部 URL、敏感词和 JWT-like 值。非字符串只接受有限的数字/布尔值转换。
+- `schema.examples` 会按顺序寻找第一个安全值，再考虑 `default`；恶意首项不会阻断后续合法值，因此 `Asia/Shanghai` 仍可生成。
+- 认证头不再读取目录 metadata，示例与鉴权说明固定使用 `X-API-Key`；curl 的 URL、header 和 query 参数使用单引号包裹并转义单引号，同时保留 `<YOUR_API_KEY>` 占位符。
+- `public-catalog.spec.ts` 的 unsafe detail 增加恶意参数名、外部 URL、空白、引号、shell 字符、换行、百分号、query/hash、反斜杠、敏感默认值和恶意认证头；新增安全路径场景，断言三种代码示例均不包含这些值，并断言合法 `Asia/Shanghai` 和 `X-API-Key` 仍存在。
+
+### 10.2 跨页真实 facets
+
+- `frontend/src/routes/catalog/index.tsx` 增加独立且缓存的公开目录 facets 查询，固定使用 `CatalogService.searchCatalog` 的无筛选请求、`page_size=100` 和 `staleTime=60_000`。
+- 查询按每个响应的 `count` 逐页读取，最多 100 页；达到 count 或空页即停止，避免不受控资源消耗。
+- `CatalogFilters` 改用完整已获取的真实 `CatalogItem[]` 计算分类/状态，并始终保留当前 URL 选择；主目录查询仍保留原有 query/category/status/page 和分页行为，facets 请求不携带这些筛选参数。
+- facets 请求失败时回退当前页真实 items，并显示现有 `CatalogErrorState`；没有新增后端接口、任意 URL、秘密或硬编码候选项。
+- 分页 route mock 返回 count=101，断言独立 facets 请求会请求 page=2/page_size=100，且不带 query、category、status。
+
+### 10.3 本轮真实验证
+
+```text
+pnpm exec biome check --no-errors-on-unmatched --files-ignore-unknown=true E:\AI_projects\yeyu-api\frontend\src\components\ApiCatalog\ApiDetailView.tsx E:\AI_projects\yeyu-api\frontend\src\components\ApiCatalog\catalog-types.ts E:\AI_projects\yeyu-api\frontend\src\routes\catalog\index.tsx E:\AI_projects\yeyu-api\frontend\tests\public-catalog.spec.ts
+exit 0
+Checked 4 files in 10ms. No fixes applied.
+
+git diff --check
+exit 0
+仅有 Windows 工作树 LF/CRLF 转换提示，无空白错误。
+```
+
+本轮没有运行 Playwright、前端 build、后端 pytest、路由生成、真实浏览器或线上验收；因此新增浏览器断言、TypeScript 完整检查、实际后端跨页响应和线上结果仍未验证。修复提交主题：`fix: harden catalog examples and filters`。

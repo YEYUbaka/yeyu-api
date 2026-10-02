@@ -10,6 +10,7 @@ export type CatalogSearchParams = {
 export type CatalogMetadata = Record<string, unknown>
 
 export const PUBLIC_API_BASE_URL = "https://api.yeyubaka.top"
+export const PUBLIC_API_AUTH_HEADER = "X-API-Key"
 
 const SENSITIVE_METADATA_KEY_PARTS = [
   "token",
@@ -22,6 +23,13 @@ const SENSITIVE_METADATA_KEY_PARTS = [
   "privatekey",
   "providerref",
 ]
+const SAFE_QUERY_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/
+const SAFE_QUERY_VALUE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/+:-]{0,127}$/
+const QUERY_VALUE_SCHEME_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:/
+const SENSITIVE_QUERY_VALUE_PATTERN =
+  /(token|secret|password|authorization|cookie|api[-_]?key|credential|private[-_]?key|bearer)/i
+const JWT_LIKE_PATTERN =
+  /^[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}$/
 
 function normalizedMetadataKey(key: string): string {
   return key.toLowerCase().replace(/[^a-z0-9]/g, "")
@@ -36,6 +44,37 @@ export function normalizeSearchValue(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined
   const normalized = value.trim()
   return normalized || undefined
+}
+
+export function normalizeSafeQueryKey(value: unknown): string | undefined {
+  return typeof value === "string" && SAFE_QUERY_KEY_PATTERN.test(value)
+    ? value
+    : undefined
+}
+
+export function normalizeSafeQueryValue(value: unknown): string | undefined {
+  const text =
+    typeof value === "string"
+      ? value
+      : typeof value === "number" && Number.isFinite(value)
+        ? String(value)
+        : typeof value === "boolean"
+          ? String(value)
+          : undefined
+
+  if (
+    !text ||
+    text !== text.trim() ||
+    !SAFE_QUERY_VALUE_PATTERN.test(text) ||
+    text.includes("://") ||
+    QUERY_VALUE_SCHEME_PATTERN.test(text) ||
+    SENSITIVE_QUERY_VALUE_PATTERN.test(text) ||
+    JWT_LIKE_PATTERN.test(text)
+  ) {
+    return undefined
+  }
+
+  return text
 }
 
 export function normalizePage(value: unknown): number {
