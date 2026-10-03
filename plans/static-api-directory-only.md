@@ -32,10 +32,10 @@
 - [x] 运行目录数据校验、TypeScript、Biome、Vite 构建和 Playwright 桌面/移动端测试。
 - [x] 独立只读子代理复查：静态入口未发现动态调用、登录、Secret、任意 URL或旧项目运行时写入；同时发现默认动态构建/CI残留并已收紧，报告见 `E:\AI_projects\yeyu-api\plans\agent-reports\static-api-directory-scope-review.md`。
 - [x] 记录真实命令和输出，不把静态构建通过写成 API 服务上线。
-- [ ] 重大阶段单独提交并推送到已确认的 GitHub 公开仓库。
+- [x] 重大阶段单独提交并推送到已确认的 GitHub 公开仓库；静态范围收敛提交为 `e44a1c0`，验证记录提交为 `c17cfc2`，当前 `origin/main` 已核对一致。
 
 ## 阶段 5：静态发布准备（不执行上线）
 
-- [x] 在 clean commit `e44a1c06f4d4adaa2ba58543b3a6838220fed83a` 上生成带 commit SHA 的静态发布包和 manifest。
-- [ ] 只读检查服务器资源、DNS、80/443、Nginx 和冲突服务。
+- [x] 在 clean commit `c17cfc276a75ad10b8db47a2f6ed11e503606869` 上生成带 commit SHA 的静态发布包和 manifest：`E:\AI_projects\yeyu-api\deploy\packages\static-catalog-c17cfc276a75ad10b8db47a2f6ed11e503606869.zip`。
+- [x] 只读检查服务器资源、DNS、80/443、Nginx 和冲突服务；证据见 `E:\AI_projects\yeyu-api\plans\verification\server-preflight-2026-10-03.md`。
 - [ ] 发布前单独说明新增目录/vhost、验证方式和回滚方式，等待用户确认后才可上传或改 Nginx。
