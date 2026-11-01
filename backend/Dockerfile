@@ -1,4 +1,4 @@
-FROM node:24.18.0-bookworm-slim AS frontend-build
+FROM node:26.12.0-bookworm-slim AS frontend-build
 
 WORKDIR /app
 
